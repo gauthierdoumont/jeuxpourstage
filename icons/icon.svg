@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!-- Créé par Gauthier Doumont -->
+<rect width="512" height="512" rx="110" fill="#2E86AB"/>
+<rect x="76" y="110" width="360" height="250" rx="40" fill="#071016"/>
+<polyline points="96,240 190,240 220,170 260,310 295,200 320,240 416,240" fill="none" stroke="#4BE07A" stroke-width="22" stroke-linejoin="round" stroke-linecap="round"/>
+<rect x="226" y="360" width="60" height="40" fill="#fff"/><rect x="160" y="395" width="192" height="34" rx="17" fill="#fff"/>
+<circle cx="410" cy="110" r="62" fill="#F18F01"/><path d="M380 110h60M410 80v60" stroke="#fff" stroke-width="18" stroke-linecap="round"/>
+</svg>

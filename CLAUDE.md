@@ -201,26 +201,26 @@ Règles strictes :
 
 ```js
 // data/soins-intensifs.js — Créé par Gauthier Doumont
-window.DATA_REA = {
-  id: "rea",
-  titre: "La Réa",
-  stage: { debut: "2026-11-30", fin: "2026-12-20", lieu: "Ottignies" },
-  themes: [{ id: "pavm", titre: "Prévention des PAVM" }],
-  cartes: [ // flashcards
-    { id: "rea-c-001", theme: "pavm", recto: "Hauteur de la tête du lit chez le patient ventilé ?",
-      verso: "30 à 45°", pourquoi: "Limite les micro-inhalations de sécrétions oropharyngées et gastriques.",
-      source: "Bundle ventilateur IHI ; Intensive Care Society", preuve: "🟡" }
-  ],
+window.ETAGES = window.ETAGES || [];
+window.ETAGES.push({
+  id: 'rea', num: 1, titre: 'La Réa', emoji: '🫁', couleur: '#2E86AB',
+  service: 'Soins intensifs', lieu: '…', stage: { debut: '2026-11-30', fin: '2026-12-20' },
+  accroche: '…', boss: 'Nom du boss',
+  themes: { pavm: 'Prévention des PAVM', … },
+  sources: { IHI: 'IHI Ventilator Bundle … 🟡', … },          // clés réutilisées dans `s`
+  cartes: [ ['pavm', 'Recto ?', 'Verso', 'Le pourquoi', 'IHI'], … ],  // [thème, recto, verso, pourquoi, source]
   questions: [
-    { id: "rea-q-001", theme: "pavm", type: "qcm", niveau: 1, // qcm | vf | ordre | priorite | calcul | association | erreur
-      enonce: "…", choix: ["…", "…", "…", "…"], bonnes: [0],
-      explication: { clair: "…", pourquoi: "…", stage: "…", piege: "…" },
-      source: "…", preuve: "🟢" }
-  ]
-};
+    { th: 'pavm', n: 1, q: 'Énoncé', c: ['A', 'B', 'C', 'D'], b: [0],      // QCM (b = indices des bonnes réponses)
+      x: ['En clair', 'Le pourquoi', 'En stage', 'Piège'], s: 'IHI' },
+    { t: 'vf', th: 'pavm', n: 2, q: 'Affirmation', b: false, x: [...], s: 'IHI' }  // Vrai/Faux
+  ],
+  mini: { calculs: ['pam', 'debit'], ordre: [...], tri: [...], associe: [...], erreur: [...], glasgow: [...], news2: true },
+  garde: { titre, intro, retenir, sbar: [S, B, A, R], noeuds: { debut: { v: {FC, PAS, PAD, SpO2, FR, T, GCS}, texte, choix: [{ t, q: 2|1|0, fb, suite, v }] }, …, fin: { fin: true, texte } } },
+  escape: { titre, intro, final, victoire, enigmes: [{ titre, texte, type: 'qcm'|'code'|'ordre', chiffre, indice, explication, … }] }
+});
 ```
 
-Scénarios de garde (`data/scenarios.js`) : graphe de nœuds `{ id, texte, constantes: {FC, PAS, PAD, SpO2, FR, T, GCS}, choix: [{ texte, suite, effet: {...}, xp, securite, feedback }] }`.
+Niveau `n` : 1 = facile, 2 = intermédiaire, 3 = difficile (les niveaux 1-5 du quiz et le boss puisent dedans). Dans une garde, `q` vaut 2 (meilleur choix), 1 (acceptable) ou 0 (risqué, coûte un café).
 Valider au chargement que chaque `suite` pointe vers un nœud existant et que chaque question a une source.
 
 ---
@@ -246,7 +246,26 @@ Valider au chargement que chaque `suite` pointe vers un nœud existant et que ch
 
 ---
 
-## 8. Hypothèses et points à confirmer
+## 8. État actuel (v1.0.0, 31/10/2026)
+
+Le jeu complet est en place et testé (Chromium 360 px, aucune erreur console, export/import et rechargement OK) :
+
+| Fichier | Rôle |
+|---------|------|
+| `index.html` | Coquille, CSS (thèmes clair/sombre), navigation du bas |
+| `app.js` | Moteur : accueil-hôpital, quiz 5 niveaux + boss, mode Garde (moniteur ECG animé + SBAR final), escape games, flashcards Leitner, 7 mini-jeux (ordre, tri, associe, trouve l'erreur, Glasgow, NEWS2, calcul flash), XP/grades/série/badges/cafés, réglages, export/import |
+| `data/soins-intensifs.js` · `data/bloc-operatoire.js` · `data/neurochirurgie.js` · `data/jugement-clinique.js` | Contenu de chaque étage (cartes, questions, mini-jeux, garde, escape game, sources) — le format est documenté en tête de chaque fichier |
+| `manifest.json` · `service-worker.js` · `icons/` | Installation sur l'écran d'accueil et fonctionnement hors ligne |
+
+Contenu actuel : ~50 cartes et ~40 questions rédigées par étage ; chaque carte génère en plus une question automatique (QCM avec distracteurs pris dans les autres cartes), soit ~80-95 questions jouables par étage. **Prochaine étape de contenu : atteindre l'objectif de 60 cartes / 120 questions par étage.**
+
+Règles pour enrichir :
+- **Toujours ajouter les cartes à la fin** du tableau `cartes` (l'index sert d'identifiant de progression Leitner).
+- Chaque question a un `th` existant, une `s` (clé de `sources` ou texte libre) et, si possible, une explication `x` complète.
+- `GardeDeNuit.valider()` (console du navigateur) liste les incohérences de données.
+- Après toute modification de fichier, incrémenter `APP_VERSION` (app.js) **et** `CACHE` (service-worker.js).
+
+## 9. Hypothèses et points à confirmer
 
 - **Ottignies** = Clinique Saint-Pierre ; **Bouge** = Clinique Saint-Luc de Bouge (hypothèses de lieu).
 - **Projet LAT** : un stage LAT où les étudiants gèrent les soins d'une unité sous supervision est documenté au CHU UCL Namur Godinne en **pneumologie** (reportage Matélé), avec l'intention de l'étendre à d'autres unités ; ici, il s'applique à la **neurochirurgie** (info de l'utilisateur). Le sens exact du sigle n'a pas été trouvé.
@@ -255,7 +274,7 @@ Valider au chargement que chaque `suite` pointe vers un nœud existant et que ch
 
 ---
 
-## 9. Sources de référence (vérifiées en octobre 2026)
+## 10. Sources de référence (vérifiées en octobre 2026)
 
 **Soins intensifs**
 - Surviving Sepsis Campaign — *International Guidelines for Management of Sepsis and Septic Shock 2026*, Crit Care Med 2026 (doi 10.1097/CCM.0000000000007075) — https://www.sccm.org/clinical-resources/guidelines/guidelines/surviving-sepsis-campaign-international-guidelines-for-management-of-sepsis-and-septic-shock-2026 🟢

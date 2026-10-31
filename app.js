@@ -1,0 +1,999 @@
+/* =====================================================================
+ * Garde de nuit — jeu de révision des stages infirmiers (bac 4, Henallux)
+ * Créé par Gauthier Doumont
+ *
+ * Journal des changements
+ * 1.0.0 (2026-10-31) : première version complète — 4 étages, mode Garde,
+ *   quiz à 5 niveaux + boss, escape games, flashcards Leitner, 7 mini-jeux,
+ *   XP / grades / série / badges / cafés, export-import, PWA hors ligne.
+ * ===================================================================== */
+'use strict';
+
+/* ============================== CONFIG ============================== */
+const APP_VERSION = '1.0.0';
+const STORAGE_KEY = 'jeuxpourstage_v1';
+const SCHEMA_VERSION = 1;
+const INTERVALLES = [0, 1, 2, 4, 7, 14];          // jours avant révision, par boîte Leitner (1 à 5)
+const CAFES_MAX = 5;
+const RAPPEL_EXPORT_JOURS = 14;
+const GRADES = [
+  [0, 'Stagiaire', '🩺'], [300, 'Étudiante confirmée', '📋'], [900, 'Infirmière', '💉'],
+  [2000, 'Infirmière référente', '⭐'], [4000, 'Cheffe d’unité', '👑'], [7000, 'Légende de Godinne', '🏆']
+];
+const ETAGES = (window.ETAGES || []).slice().sort((a, b) => a.num - b.num);
+
+const BADGES = [
+  ['premiers-pas', '👣', 'Premiers pas', 'Répondre à ta 1re question', s => s.stats.reponses >= 1],
+  ['cent', '💯', 'Centurionne', '100 bonnes réponses', s => s.stats.bonnes >= 100],
+  ['combo', '🔥', 'En feu', 'Série de 10 bonnes réponses d’affilée', s => s.stats.meilleurCombo >= 10],
+  ['flash50', '🃏', 'Mémoire d’éléphant', '50 flashcards révisées', s => s.stats.cartes >= 50],
+  ['flash300', '🐘', 'Archiviste', '300 flashcards révisées', s => s.stats.cartes >= 300],
+  ['pupilles', '👁️', 'Pupilles d’aigle', '20 Glasgow parfaits', s => s.stats.glasgowParfaits >= 20],
+  ['calme', '😌', 'Calme en réa', 'Finir la garde de réa avec ≥ 80 %', s => (s.etages.rea || {}).garde >= 80],
+  ['compresse', '🧽', 'Zéro compresse oubliée', 'Finir la garde du bloc avec ≥ 80 %', s => (s.etages.bloc || {}).garde >= 80],
+  ['neuro', '🧠', 'Neurone d’or', 'Finir la garde de neuro avec ≥ 80 %', s => (s.etages.neuro || {}).garde >= 80],
+  ['sommet', '🧭', 'Boussole clinique', 'Finir la garde du Sommet avec ≥ 80 %', s => (s.etages.jugement || {}).garde >= 80],
+  ['sbar', '📞', 'SBAR d’or', '5 transmissions SBAR parfaites', s => s.stats.sbarParfaits >= 5],
+  ['evade', '🔓', 'Évadée', 'Réussir un escape game', s => s.stats.escapes >= 1],
+  ['evade4', '🗝️', 'Passe-muraille', 'Réussir les 4 escape games', s => ETAGES.every(e => (s.etages[e.id] || {}).escape)],
+  ['boss1', '🥊', 'Tueuse de boss', 'Battre un boss', s => s.stats.boss >= 1],
+  ['boss4', '🏆', 'Reine des étages', 'Battre les 4 boss', s => ETAGES.every(e => (s.etages[e.id] || {}).boss)],
+  ['calcul', '🧮', 'Calculette humaine', '20 calculs justes', s => s.stats.calculs >= 20],
+  ['serie7', '📅', 'Une semaine pile', 'Série de 7 jours', s => s.serie.max >= 7],
+  ['serie30', '🌙', 'Gardienne de nuit', 'Série de 30 jours', s => s.serie.max >= 30],
+  ['mini', '🎮', 'Touche-à-tout', '25 mini-jeux terminés', s => s.stats.miniJeux >= 25],
+  ['maitrise', '🎓', 'Prête pour le stage', 'Un étage maîtrisé à 80 %', s => ETAGES.some(e => maitrise(e.id) >= 80)]
+];
+
+const MESSAGES_MONITO = [
+  'Bip… bip… Une petite révision et je suis rassuré !',
+  'Rappel : le protocole du service et ton/ta référent(e) priment toujours sur le jeu 😉',
+  'Mains propres, esprit clair ! 🧼',
+  'Tu sais ce qui fait monter mon rythme cardiaque ? Une série de 10 bonnes réponses 💚',
+  'Pense à boire un verre d’eau. Moi je suis branché sur secteur.',
+  'Même les infirmières légendaires ont commencé par « Stagiaire ».',
+  'Un patient qui « n’est pas comme d’habitude », ça se signale. Toujours.'
+];
+
+/* ============================== UTILITAIRES ============================== */
+const $ = (sel, el = document) => el.querySelector(sel);
+const $$ = (sel, el = document) => Array.from(el.querySelectorAll(sel));
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const pick = a => a[Math.floor(Math.random() * a.length)];
+const rnd = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+function dateLocale(d = new Date()) { const p = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); }
+function jours(a, b) { return Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 86400000); }
+function ajouteJours(d, n) { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + n); return dateLocale(x); }
+function semaineISO(d) { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + 3 - ((x.getDay() + 6) % 7)); const s1 = new Date(x.getFullYear(), 0, 4); return x.getFullYear() + '-' + (1 + Math.round(((x - s1) / 86400000 - 3 + ((s1.getDay() + 6) % 7)) / 7)); }
+function dateFr(d) { return new Date(d + 'T12:00:00').toLocaleDateString('fr-BE', { day: 'numeric', month: 'long' }); }
+function fmtTemps(s) { const m = Math.floor(s / 60), r = s % 60; return m + ':' + String(r).padStart(2, '0'); }
+const etage = id => ETAGES.find(e => e.id === id);
+function sourceTexte(e, s) { if (!s) return ''; return s.split('+').map(k => (e.sources && e.sources[k.trim()]) || k.trim()).join(' · '); }
+
+/* ============================== ÉTAT ============================== */
+function etatParDefaut() {
+  const et = {};
+  ETAGES.forEach(e => { et[e.id] = { niveaux: [0, 0, 0, 0, 0], boss: 0, garde: null, escape: null }; });
+  return {
+    schemaVersion: SCHEMA_VERSION, cree: dateLocale(), xp: 0, cafes: CAFES_MAX,
+    serie: { n: 0, max: 0, dernier: null, jokerSemaine: null },
+    cartes: {}, etages: et, badges: {},
+    stats: { reponses: 0, bonnes: 0, meilleurCombo: 0, cartes: 0, glasgowParfaits: 0, escapes: 0, boss: 0, calculs: 0, miniJeux: 0, gardes: 0, sbarParfaits: 0, cartesDepuisCafe: 0 },
+    reglages: { theme: 'auto', son: true, vibration: true, animations: true },
+    dernierExport: null
+  };
+}
+let S = etatParDefaut();
+let nettoyages = [];   // fonctions à appeler quand on quitte une vue (minuteurs, animations)
+
+/* ============================== STOCKAGE ============================== */
+function migrer(d) {
+  // Exemple pour plus tard : if (d.schemaVersion === 1) { ...; d.schemaVersion = 2; }
+  return d;
+}
+function fusion(base, d) {
+  for (const k in d) {
+    if (d[k] && typeof d[k] === 'object' && !Array.isArray(d[k]) && base[k] && typeof base[k] === 'object' && !Array.isArray(base[k])) fusion(base[k], d[k]);
+    else base[k] = d[k];
+  }
+  return base;
+}
+function charger() {
+  try {
+    const brut = localStorage.getItem(STORAGE_KEY);
+    if (brut) S = fusion(etatParDefaut(), migrer(JSON.parse(brut)));
+  } catch (e) { console.warn('Lecture impossible, nouvelle partie.', e); S = etatParDefaut(); }
+}
+function sauver() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(S)); } catch (e) { console.warn('Sauvegarde impossible', e); }
+}
+function exporter() {
+  const blob = new Blob([JSON.stringify(S, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'garde-de-nuit-sauvegarde-' + dateLocale() + '.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  S.dernierExport = dateLocale(); sauver(); toast('💾 Sauvegarde exportée');
+}
+function importer(fichier) {
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const d = JSON.parse(r.result);
+      if (!d || typeof d !== 'object' || !('xp' in d)) throw new Error('format');
+      if (!confirm('Remplacer ta progression actuelle par celle du fichier ?')) return;
+      S = fusion(etatParDefaut(), migrer(d)); sauver(); appliquerReglages(); toast('📥 Sauvegarde importée'); aller('accueil');
+    } catch (e) { alert('Ce fichier n’est pas une sauvegarde valide.'); }
+  };
+  r.readAsText(fichier);
+}
+
+/* ============================== SONS, VIBRATIONS, EFFETS ============================== */
+let audioCtx = null;
+function son(type) {
+  if (!S.reglages.son) return;
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const notes = { ok: [660, 880], ko: [220, 160], niveau: [523, 659, 784, 1046], bip: [1000], clic: [440] }[type] || [440];
+    notes.forEach((f, i) => {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = type === 'ko' ? 'sawtooth' : 'sine'; o.frequency.value = f;
+      const t = audioCtx.currentTime + i * 0.09;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.12, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+      o.connect(g); g.connect(audioCtx.destination); o.start(t); o.stop(t + 0.18);
+    });
+  } catch (e) { /* audio indisponible */ }
+}
+function vibre(p) { if (S.reglages.vibration && navigator.vibrate) try { navigator.vibrate(p); } catch (e) { } }
+function toast(txt, ms = 2600) {
+  const t = document.createElement('div'); t.className = 'toast'; t.textContent = txt;
+  $('#toasts').appendChild(t); setTimeout(() => t.remove(), ms);
+}
+function animationsOn() { return S.reglages.animations && !matchMedia('(prefers-reduced-motion: reduce)').matches; }
+function confettis() {
+  if (!animationsOn()) return;
+  const c = $('#confettis'), ctx = c.getContext('2d');
+  c.width = innerWidth; c.height = innerHeight;
+  const cols = ['#2E86AB', '#3BB273', '#7B5EA7', '#F18F01', '#E15554'];
+  const p = Array.from({ length: 110 }, () => ({ x: Math.random() * c.width, y: -20 - Math.random() * c.height * 0.4, vx: (Math.random() - .5) * 3, vy: 2 + Math.random() * 4, r: Math.random() * 6.28, c: pick(cols), s: 5 + Math.random() * 6 }));
+  let n = 0;
+  (function f() {
+    ctx.clearRect(0, 0, c.width, c.height);
+    p.forEach(q => { q.x += q.vx; q.y += q.vy; q.r += .1; ctx.save(); ctx.translate(q.x, q.y); ctx.rotate(q.r); ctx.fillStyle = q.c; ctx.fillRect(-q.s / 2, -q.s / 4, q.s, q.s / 2); ctx.restore(); });
+    if (++n < 160) requestAnimationFrame(f); else ctx.clearRect(0, 0, c.width, c.height);
+  })();
+}
+
+/* ============================== PROGRESSION ============================== */
+function grade(xp = S.xp) { let g = GRADES[0], i = 0; GRADES.forEach((x, k) => { if (xp >= x[0]) { g = x; i = k; } }); return { nom: g[1], ico: g[2], i, min: g[0], max: (GRADES[i + 1] || [g[0]])[0] }; }
+function majSerie() {
+  const auj = dateLocale(), s = S.serie;
+  if (s.dernier === auj) return;
+  if (!s.dernier) s.n = 1;
+  else {
+    const ecart = jours(s.dernier, auj);
+    if (ecart === 1) s.n++;
+    else if (ecart === 2 && s.jokerSemaine !== semaineISO(auj)) { s.n++; s.jokerSemaine = semaineISO(auj); toast('☕ Jour de congé utilisé : ta série est sauvée !'); }
+    else s.n = 1;
+  }
+  s.dernier = auj; s.max = Math.max(s.max, s.n);
+}
+function gagneXP(n) {
+  if (n <= 0) return;
+  const avant = grade().i;
+  S.xp += Math.round(n); majSerie();
+  const g = grade();
+  if (g.i > avant) { toast(g.ico + ' Nouveau grade : ' + g.nom + ' !', 3500); son('niveau'); confettis(); }
+  verifBadges(); sauver();
+}
+function verifBadges() {
+  BADGES.forEach(([id, ico, nom, , test]) => {
+    if (!S.badges[id]) { let ok = false; try { ok = test(S); } catch (e) { } if (ok) { S.badges[id] = dateLocale(); toast(ico + ' Badge débloqué : ' + nom, 3500); son('niveau'); } }
+  });
+}
+function cartesEtage(e) { return e.cartes.map((c, i) => ({ id: e.id + '-c' + i, th: c[0], recto: c[1], verso: c[2], pourquoi: c[3], s: c[4], etage: e.id })); }
+function maitrise(id) {
+  const e = etage(id), st = S.etages[id]; if (!e || !st) return 0;
+  const cs = cartesEtage(e);
+  const fortes = cs.filter(c => (S.cartes[c.id] || {}).boite >= 3).length;
+  const niv = st.niveaux.filter(x => x >= 6).length;
+  return Math.round(niv / 5 * 35 + (st.boss ? 15 : 0) + (cs.length ? fortes / cs.length * 30 : 0) + (st.garde != null ? Math.min(st.garde, 100) / 10 : 0) + (st.escape ? 10 : 0));
+}
+function prochainStage() {
+  const auj = dateLocale();
+  const enCours = ETAGES.find(e => e.stage.debut <= auj && auj <= e.stage.fin);
+  if (enCours) return { e: enCours, enCours: true, j: jours(auj, enCours.stage.fin) };
+  const futurs = ETAGES.filter(e => e.stage.debut > auj).sort((a, b) => a.stage.debut.localeCompare(b.stage.debut));
+  return futurs.length ? { e: futurs[0], enCours: false, j: jours(auj, futurs[0].stage.debut) } : null;
+}
+function cartesDues(ids) {
+  const auj = dateLocale(), dues = [], nouvelles = [];
+  ETAGES.filter(e => !ids || ids.includes(e.id)).forEach(e => cartesEtage(e).forEach(c => {
+    const st = S.cartes[c.id];
+    if (!st) nouvelles.push(c); else if (st.due <= auj) dues.push(c);
+  }));
+  return { dues, nouvelles };
+}
+
+/* ============================== RENDU : CADRE ============================== */
+function appliquerReglages() {
+  const r = document.documentElement;
+  if (S.reglages.theme === 'auto') r.removeAttribute('data-theme'); else r.setAttribute('data-theme', S.reglages.theme);
+  r.setAttribute('data-anim', S.reglages.animations ? 'on' : 'off');
+}
+function entete(titre, retour) {
+  return `<div class="topbar">${retour ? `<button class="btn-retour" data-retour aria-label="Retour">←</button>` : ''}<h1>${titre}</h1>
+  <div class="chips"><span class="chip" title="Cafés">☕ ${S.cafes}</span><span class="chip" title="Série">🔥 ${S.serie.n}</span></div></div>`;
+}
+function vue(html) {
+  nettoyages.forEach(f => { try { f(); } catch (e) { } }); nettoyages = [];
+  const m = $('#main'); m.innerHTML = html; window.scrollTo(0, 0);
+  $$('[data-retour]', m).forEach(b => b.onclick = () => history.back());
+  return m;
+}
+function monitoSVG(humeur = 'content') {
+  const bouche = humeur === 'triste' ? 'M22 44 Q32 38 42 44' : 'M22 40 Q32 48 42 40';
+  return `<svg viewBox="0 0 64 64" aria-hidden="true"><rect x="4" y="6" width="56" height="44" rx="10" fill="#2E86AB"/><rect x="9" y="11" width="46" height="34" rx="6" fill="#071016"/>
+  <polyline points="11,30 20,30 24,22 28,38 32,26 35,30 53,30" fill="none" stroke="#4BE07A" stroke-width="2"/>
+  <circle cx="24" cy="20" r="2.6" fill="#fff"/><circle cx="40" cy="20" r="2.6" fill="#fff"/><path d="${bouche}" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+  <rect x="26" y="50" width="12" height="6" fill="#2E86AB"/><rect x="18" y="55" width="28" height="5" rx="2.5" fill="#2E86AB"/></svg>`;
+}
+function monito(txt, humeur) { return `<div class="monito">${monitoSVG(humeur)}<div class="bulle">${txt}</div></div>`; }
+
+/* ============================== NAVIGATION ============================== */
+const VUES = {};
+function aller(nom, params = {}, remplace = false) {
+  const etat = { nom, params };
+  if (remplace) history.replaceState(etat, ''); else history.pushState(etat, '');
+  afficher(etat);
+}
+function afficher(etat) {
+  const f = VUES[etat.nom] || VUES.accueil;
+  $$('nav.bas button').forEach(b => b.classList.toggle('actif', b.dataset.nav === etat.nom));
+  f(etat.params || {});
+}
+window.addEventListener('popstate', e => afficher(e.state || { nom: 'accueil' }));
+
+/* ============================== VUE : ACCUEIL (HÔPITAL) ============================== */
+VUES.accueil = () => {
+  const g = grade(), ps = prochainStage();
+  const pct = g.max > g.min ? Math.round((S.xp - g.min) / (g.max - g.min) * 100) : 100;
+  let msg = pick(MESSAGES_MONITO);
+  if (ps && ps.enCours) msg = `Tu es en stage <b>${esc(ps.e.titre)}</b> ! Encore ${ps.j} jour(s). Courage, je révise avec toi 💪`;
+  else if (ps && ps.j <= 14) msg = `Ton stage <b>${esc(ps.e.titre)}</b> commence dans <b>${ps.j} jour(s)</b> ! On s’échauffe à l’étage ${ps.e.num} ?`;
+  const { dues, nouvelles } = cartesDues();
+  const rappel = (S.xp > 0 && (S.dernierExport ? jours(S.dernierExport, dateLocale()) >= RAPPEL_EXPORT_JOURS : jours(S.cree, dateLocale()) >= RAPPEL_EXPORT_JOURS));
+  const etagesHTML = ETAGES.slice().reverse().map(e => {
+    const vedette = ps && ps.e.id === e.id;
+    const m = maitrise(e.id);
+    return `<button class="etage ${vedette ? 'vedette' : ''}" style="--c:${e.couleur}" data-etage="${e.id}">
+      ${vedette ? `<span class="badge-stage">${ps.enCours ? 'En stage !' : 'Stage dans ' + ps.j + ' j'}</span>` : ''}
+      <span class="num">É${e.num}</span><span class="em">${e.emoji}</span>
+      <span class="info"><b>${esc(e.titre)}</b><small>${esc(e.service)} · ${dateFr(e.stage.debut)} → ${dateFr(e.stage.fin)}</small>
+      <span class="barre" style="margin-top:5px"><i style="width:${m}%"></i></span></span><small>${m}%</small></button>`;
+  }).join('');
+  vue(`<div class="topbar"><h1>🏥 Garde de nuit</h1><div class="chips"><span class="chip">☕ ${S.cafes}</span><span class="chip">🔥 ${S.serie.n}</span></div></div>
+  <div class="carte" style="padding:10px 14px"><div style="display:flex;justify-content:space-between;align-items:center"><b>${g.ico} ${g.nom}</b><small>${S.xp} XP${g.max > g.min ? ' / ' + g.max : ''}</small></div>
+  <div class="barre" style="margin-top:6px"><i style="width:${pct}%"></i></div></div>
+  ${monito(msg)}
+  ${rappel ? `<div class="carte alerte-export">💾 Pense à <b>exporter ta sauvegarde</b> (le navigateur peut l’effacer).<button class="btn orange" id="exp">Exporter maintenant</button></div>` : ''}
+  ${(dues.length || nouvelles.length) ? `<button class="btn violet" id="mission">🃏 Mission du jour : ${dues.length ? dues.length + ' carte(s) à revoir' : 'découvrir de nouvelles cartes'}</button>` : ''}
+  <div class="hopital"><div class="toit"><span>✚ HÔPITAL DES STAGES ✚</span></div>${etagesHTML}
+  <div class="rdc"><button data-go="vestiaire">🎖️ Vestiaire</button><button data-go="revision">🃏 Salle de révision</button></div></div>
+  <p class="signature">Créé par Gauthier Doumont</p>`);
+  $$('[data-etage]').forEach(b => b.onclick = () => { son('clic'); aller('etage', { id: b.dataset.etage }); });
+  $$('[data-go]').forEach(b => b.onclick = () => aller(b.dataset.go));
+  if ($('#exp')) $('#exp').onclick = () => { exporter(); aller('accueil', {}, true); };
+  if ($('#mission')) $('#mission').onclick = () => lancerFlash(null);
+};
+
+/* ============================== VUE : ÉTAGE ============================== */
+VUES.etage = ({ id }) => {
+  const e = etage(id), st = S.etages[id];
+  if (!e) return aller('accueil', {}, true);
+  const { dues, nouvelles } = cartesDues([id]);
+  const niv = st.niveaux.filter(x => x >= 6).length;
+  vue(`${entete(e.emoji + ' ' + esc(e.titre), true)}
+  <div class="carte" style="border-left:6px solid ${e.couleur}"><b>${esc(e.service)}</b><br><small>${esc(e.lieu)} · du ${dateFr(e.stage.debut)} au ${dateFr(e.stage.fin)}</small>
+  <div style="display:flex;align-items:center;gap:8px;margin-top:8px"><div class="barre" style="flex:1"><i style="width:${maitrise(id)}%"></i></div><b>${maitrise(id)}%</b></div><small>Maîtrise de l’étage</small></div>
+  ${monito(esc(e.accroche))}
+  <div class="grille2">
+    <button class="tuile" data-m="garde"><span class="ico">🌙</span><b>Garde</b><small>${st.garde != null ? 'Record : ' + st.garde + '%' : 'Prends ton service'}</small></button>
+    <button class="tuile" data-m="quiz"><span class="ico">🏆</span><b>Quiz</b><small>${niv}/5 niveaux${st.boss ? ' · boss ✔' : ''}</small></button>
+    <button class="tuile" data-m="escape"><span class="ico">🔐</span><b>Escape game</b><small>${st.escape ? 'Record : ' + fmtTemps(st.escape) : 'Trouve le code'}</small></button>
+    <button class="tuile" data-m="flash"><span class="ico">🃏</span><b>Flashcards</b><small>${dues.length} à revoir · ${nouvelles.length} nouvelles</small></button>
+    <button class="tuile" data-m="mini"><span class="ico">🎮</span><b>Mini-jeux</b><small>Rapides, 1-2 min</small></button>
+    <button class="tuile" data-m="fiches"><span class="ico">📖</span><b>Fiches mémo</b><small>${e.cartes.length} notions</small></button>
+  </div>
+  <p class="doux" style="font-size:.82rem;margin-top:14px">⚠️ Ce jeu reprend des recommandations générales. Le protocole du service et ton/ta référent(e) de stage priment toujours.</p>`);
+  $$('[data-m]').forEach(b => b.onclick = () => {
+    son('clic'); const m = b.dataset.m;
+    if (m === 'garde') aller('garde', { id });
+    else if (m === 'quiz') aller('niveaux', { id });
+    else if (m === 'escape') aller('escape', { id });
+    else if (m === 'flash') lancerFlash([id]);
+    else if (m === 'mini') aller('mini', { id });
+    else aller('fiches', { id });
+  });
+};
+
+/* ============================== VUE : FICHES ============================== */
+VUES.fiches = ({ id }) => {
+  const e = etage(id), cs = cartesEtage(e);
+  const parTheme = Object.keys(e.themes).map(th => {
+    const liste = cs.filter(c => c.th === th);
+    if (!liste.length) return '';
+    return `<details class="fiche"><summary>${esc(e.themes[th])} <small style="margin-left:auto">${liste.length}</small></summary>
+    ${liste.map(c => `<div class="carte-fiche"><b>${esc(c.recto)}</b>${esc(c.verso)}${c.pourquoi ? `<br><small>🧠 ${esc(c.pourquoi)}</small>` : ''}<div class="source">📚 ${esc(sourceTexte(e, c.s))}</div></div>`).join('')}</details>`;
+  }).join('');
+  vue(`${entete('📖 Fiches — ' + esc(e.titre), true)}<p class="doux">Toutes les notions de l’étage, classées par thème. Touche un thème pour l’ouvrir.</p>${parTheme}
+  <div class="carte"><b>📚 Sources de l’étage</b>${Object.values(e.sources).map(s => `<div class="source">• ${esc(s)}</div>`).join('')}</div>`);
+};
+
+/* ============================== QUESTIONS ============================== */
+function questionsEtage(e, avecAuto = true) {
+  const qs = e.questions.map((q, i) => Object.assign({ t: 'qcm', id: e.id + '-q' + i, etage: e.id }, q));
+  if (!avecAuto) return qs;
+  const cs = cartesEtage(e);
+  const auto = cs.map(c => {
+    const autres = shuffle(cs.filter(x => x.verso !== c.verso && x.th === c.th)).concat(shuffle(cs.filter(x => x.verso !== c.verso && x.th !== c.th)));
+    const distr = [...new Set(autres.map(x => x.verso))].slice(0, 3);
+    if (distr.length < 3) return null;
+    const choix = shuffle([c.verso, ...distr]);
+    return { t: 'qcm', id: c.id + '-auto', etage: e.id, th: c.th, n: 1, q: c.recto, c: choix, b: [choix.indexOf(c.verso)], x: [c.verso, c.pourquoi], s: c.s, auto: true };
+  }).filter(Boolean);
+  return qs.concat(auto);
+}
+const POOLS = [q => q.n === 1, q => q.n <= 2, q => q.n === 2, q => q.n >= 2, q => q.n === 3];
+function explicationHTML(e, q, juste) {
+  const x = q.x || [];
+  let h = `<div class="verdict ${juste ? 'ok' : 'ko'}">${juste ? pick(['Bravo ! ✅', 'Exact ! 🎯', 'Parfait ! 💚', 'Bien vu ! 👏']) : pick(['Pas tout à fait… ❌', 'Raté, mais on apprend ! 📘', 'Oups ! ❌'])}</div>`;
+  if (q.t === 'vf') h += `<div class="bloc b-tech"><b class="t">🔬 Réponse</b>${q.b ? 'VRAI' : 'FAUX'}</div>`;
+  else if (!juste) h += `<div class="bloc b-tech"><b class="t">🔬 Bonne réponse</b>${q.b.map(i => esc(q.c[i])).join('<br>')}</div>`;
+  if (x[0]) h += `<div class="bloc b-clair"><b class="t">💬 En clair</b>${esc(x[0])}</div>`;
+  if (x[1]) h += `<div class="bloc b-pourquoi"><b class="t">🧠 Le pourquoi</b>${esc(x[1])}</div>`;
+  if (x[2]) h += `<div class="bloc b-stage"><b class="t">🩺 En stage</b>${esc(x[2])}</div>`;
+  if (x[3]) h += `<div class="bloc b-piege"><b class="t">⚠️ Piège</b>${esc(x[3])}</div>`;
+  if (q.s) h += `<div class="source">📚 ${esc(sourceTexte(e, q.s))}</div>`;
+  return h;
+}
+
+/* Moteur de quiz générique : opts = { titre, questions, chrono (s/question ou 0), fin(bonnes,total) } */
+function quiz(opts) {
+  let i = 0, bonnes = 0, combo = 0, xpTotal = 0, minuteur = null;
+  const total = opts.questions.length;
+  function question() {
+    const q = opts.questions[i], e = etage(q.etage);
+    const multi = q.t === 'qcm' && q.b.length > 1;
+    let ordre = q.t === 'qcm' ? shuffle(q.c.map((_, k) => k)) : [];
+    const m = vue(`${entete(opts.titre, true)}
+      <div class="progression"><span>Question ${i + 1}/${total}</span><span class="combo">${combo >= 3 ? '🔥 Combo ×' + (combo >= 6 ? 3 : 2) : ''}</span><span>✅ ${bonnes}</span></div>
+      ${opts.chrono ? `<div class="chrono"><i id="chr" style="width:100%"></i></div>` : ''}
+      <div class="carte"><div class="doux" style="font-size:.78rem">${e.emoji} ${esc(e.themes[q.th] || '')}${q.t === 'vf' ? ' · Vrai ou faux ?' : multi ? ' · Plusieurs bonnes réponses' : ''}</div>
+      <div class="question">${esc(q.q)}</div></div>
+      <div id="rep">${q.t === 'vf'
+        ? `<div class="rangee"><button class="choix centre" data-v="1">👍 Vrai</button><button class="choix centre" data-v="0">👎 Faux</button></div>`
+        : ordre.map(k => `<button class="choix" data-k="${k}">${esc(q.c[k])}</button>`).join('') + (multi ? `<button class="btn" id="valider">Valider</button>` : '')}</div>
+      <div id="fb"></div>`);
+    const debut = Date.now();
+    let fini = false;
+    if (opts.chrono) {
+      let reste = opts.chrono;
+      requestAnimationFrame(() => { const c = $('#chr'); if (c) c.style.width = '100%'; });
+      minuteur = setInterval(() => {
+        reste--; const c = $('#chr'); if (c) c.style.width = (reste / opts.chrono * 100) + '%';
+        if (reste <= 0) { clearInterval(minuteur); if (!fini) corriger(null); }
+      }, 1000);
+      nettoyages.push(() => clearInterval(minuteur));
+    }
+    function corriger(rep) {
+      if (fini) return; fini = true; clearInterval(minuteur);
+      let juste;
+      if (q.t === 'vf') juste = rep !== null && (rep === '1') === !!q.b;
+      else { const sel = rep || []; juste = sel.length === q.b.length && sel.every(k => q.b.includes(k)); }
+      S.stats.reponses++;
+      if (juste) {
+        bonnes++; combo++; S.stats.bonnes++; S.stats.meilleurCombo = Math.max(S.stats.meilleurCombo, combo);
+        const mult = combo >= 6 ? 3 : combo >= 3 ? 2 : 1;
+        const vite = opts.chrono && (Date.now() - debut) < opts.chrono * 500 ? 5 : 0;
+        const gain = 10 * mult + vite; xpTotal += gain; gagneXP(gain); son('ok'); vibre(30);
+      } else { combo = 0; son('ko'); vibre([60, 40, 60]); sauver(); }
+      // marquer les réponses
+      if (q.t === 'vf') $$('[data-v]', m).forEach(b => { b.disabled = true; if ((b.dataset.v === '1') === !!q.b) b.classList.add('ok'); else if (b.dataset.v === rep) b.classList.add('ko'); });
+      else $$('[data-k]', m).forEach(b => { const k = +b.dataset.k; b.disabled = true; b.classList.remove('sel'); if (q.b.includes(k)) b.classList.add('ok'); else if ((rep || []).includes(k)) b.classList.add('ko'); });
+      if ($('#valider')) $('#valider').remove();
+      $('#fb').innerHTML = (rep === null ? '<div class="verdict ko">⏰ Temps écoulé !</div>' : '') + explicationHTML(e, q, juste) + `<button class="btn" id="suiv">${i + 1 < total ? 'Question suivante →' : 'Voir le résultat'}</button>`;
+      $('#suiv').onclick = () => { i++; if (i < total) question(); else opts.fin(bonnes, total, xpTotal); };
+      $('#fb').scrollIntoView({ behavior: animationsOn() ? 'smooth' : 'auto', block: 'start' });
+    }
+    if (q.t === 'vf') $$('[data-v]', m).forEach(b => b.onclick = () => corriger(b.dataset.v));
+    else if (!multi) $$('[data-k]', m).forEach(b => b.onclick = () => corriger([+b.dataset.k]));
+    else {
+      $$('[data-k]', m).forEach(b => b.onclick = () => { if (!fini) b.classList.toggle('sel'); });
+      $('#valider').onclick = () => corriger($$('[data-k].sel', m).map(b => +b.dataset.k));
+    }
+  }
+  question();
+}
+function ecranResultat(titre, html, boutons) {
+  vue(`${entete(titre, true)}<div class="carte centre">${html}</div>${boutons.map((b, k) => `<button class="btn ${b[2] || ''}" data-b="${k}">${b[0]}</button>`).join('')}`);
+  $$('[data-b]').forEach(el => el.onclick = () => boutons[+el.dataset.b][1]());
+}
+
+/* ============================== VUE : NIVEAUX DE QUIZ ============================== */
+const NOMS_NIVEAUX = ['Échauffement', 'Premiers soins', 'Vitesse de croisière', 'Situations délicates', 'Expert(e)'];
+VUES.niveaux = ({ id }) => {
+  const e = etage(id), st = S.etages[id];
+  const debloque = k => k === 0 || st.niveaux[k - 1] >= 6;
+  const bossOuvert = st.niveaux[2] >= 6;
+  vue(`${entete('🏆 Quiz — ' + esc(e.titre), true)}
+  <p class="doux">8 questions par niveau. Il faut <b>6/8</b> pour débloquer le suivant. Les combos multiplient l’XP !</p>
+  ${NOMS_NIVEAUX.map((n, k) => `<button class="etage" style="--c:${e.couleur}" data-n="${k}" ${debloque(k) ? '' : 'disabled'}>
+    <span class="em">${debloque(k) ? (st.niveaux[k] >= 6 ? '⭐' : '▶️') : '🔒'}</span><span class="info"><b>Niveau ${k + 1} · ${n}</b><small>${st.niveaux[k] ? 'Meilleur score : ' + st.niveaux[k] + '/8' : debloque(k) ? 'À jouer' : 'Réussis le niveau ' + k + ' pour ouvrir'}</small></span></button>`).join('')}
+  <button class="etage" style="--c:var(--rouge)" id="boss" ${bossOuvert ? '' : 'disabled'}><span class="em">${bossOuvert ? '👹' : '🔒'}</span><span class="info"><b>BOSS : ${esc(e.boss)}</b>
+  <small>${st.boss ? 'Vaincu ! ' + st.boss + '/10' : bossOuvert ? '10 questions · 25 s chacune · 7/10 pour gagner' : 'Réussis le niveau 3 pour l’affronter'}</small></span></button>`);
+  $$('[data-n]').forEach(b => b.onclick = () => { if (debloque(+b.dataset.n)) lancerNiveau(id, +b.dataset.n); });
+  $('#boss').onclick = () => { if (bossOuvert) lancerBoss(id); };
+};
+function lancerNiveau(id, k) {
+  const e = etage(id), toutes = questionsEtage(e);
+  let pool = toutes.filter(POOLS[k]);
+  if (pool.length < 8) pool = pool.concat(shuffle(toutes.filter(q => !pool.includes(q))).slice(0, 8 - pool.length));
+  // privilégier les questions rédigées (les questions auto complètent)
+  const redigees = shuffle(pool.filter(q => !q.auto)), autos = shuffle(pool.filter(q => q.auto));
+  const choix = shuffle(redigees.slice(0, 6).concat(autos).concat(redigees.slice(6)).slice(0, 8));
+  quiz({
+    titre: `Niveau ${k + 1} · ${NOMS_NIVEAUX[k]}`, questions: choix, chrono: 0,
+    fin: (b, t, xp) => {
+      const st = S.etages[id], dejaReussi = st.niveaux[k] >= 6;
+      st.niveaux[k] = Math.max(st.niveaux[k], b);
+      if (b >= 6 && !dejaReussi) { gagneXP(50); confettis(); son('niveau'); }
+      sauver();
+      ecranResultat('Résultat', `<div class="grand-emoji">${b >= 6 ? '🎉' : '💪'}</div><h2>${b}/${t}</h2><p>${b >= 6 ? (k < 4 ? 'Niveau réussi ! Le suivant est ouvert.' : 'Tu as terminé tous les niveaux !') : 'Il faut 6/8. Réessaie, les questions changent à chaque partie.'}</p><p class="doux">+${xp + (b >= 6 && !dejaReussi ? 50 : 0)} XP</p>`,
+        [['Rejouer ce niveau', () => lancerNiveau(id, k)], ...(b >= 6 && k < 4 ? [['Niveau suivant →', () => lancerNiveau(id, k + 1), 'vert']] : []), ['Retour aux niveaux', () => aller('niveaux', { id }, true), 'sec']]);
+    }
+  });
+}
+function lancerBoss(id) {
+  const e = etage(id), toutes = questionsEtage(e);
+  const dures = shuffle(toutes.filter(q => q.n >= 2 && !q.auto));
+  const qs = shuffle(dures.slice(0, 8).concat(shuffle(toutes.filter(q => !dures.slice(0, 8).includes(q))).slice(0, 10 - Math.min(8, dures.length)))).slice(0, 10);
+  quiz({
+    titre: '👹 ' + e.boss, questions: qs, chrono: 25,
+    fin: (b, t, xp) => {
+      const st = S.etages[id], deja = st.boss;
+      if (b >= 7) { st.boss = Math.max(st.boss, b); if (!deja) { S.stats.boss++; gagneXP(150); } confettis(); son('niveau'); }
+      sauver();
+      ecranResultat('Boss', `<div class="grand-emoji">${b >= 7 ? '🏆' : '👹'}</div><h2>${b}/${t}</h2><p>${b >= 7 ? 'Boss vaincu ! Tu gères cet étage.' : 'Le boss résiste… Il faut 7/10. Revois les fiches et retente !'}</p><p class="doux">+${xp + (b >= 7 && !deja ? 150 : 0)} XP</p>`,
+        [['Revanche !', () => lancerBoss(id), 'rouge'], ['Retour', () => aller('niveaux', { id }, true), 'sec']]);
+    }
+  });
+}
+
+/* ============================== FLASHCARDS (LEITNER) ============================== */
+function lancerFlash(ids) {
+  let { dues, nouvelles } = cartesDues(ids);
+  let paquet = shuffle(dues).slice(0, 20).concat(shuffle(nouvelles).slice(0, 8));
+  let libre = false;
+  if (!paquet.length) {
+    const toutes = ETAGES.filter(e => !ids || ids.includes(e.id)).flatMap(cartesEtage);
+    return ecranResultat('Flashcards', `<div class="grand-emoji">😴</div><h2>Rien à revoir aujourd’hui !</h2><p>Toutes tes cartes sont à jour. Tu peux quand même t’entraîner en mode libre (sans changer les boîtes).</p>`,
+      [['Mode libre (10 cartes)', () => { flashSession(shuffle(toutes).slice(0, 10), true, ids); }], ['Retour', () => history.back(), 'sec']]);
+  }
+  flashSession(shuffle(paquet), libre, ids);
+}
+function flashSession(paquet, libre, ids) {
+  let i = 0, sues = 0;
+  function carte() {
+    const c = paquet[i], e = etage(c.etage), st = S.cartes[c.id] || { boite: 0 };
+    vue(`${entete('🃏 Flashcards' + (libre ? ' (libre)' : ''), true)}
+    <div class="progression"><span>Carte ${i + 1}/${paquet.length}</span><span>${e.emoji} ${esc(e.themes[c.th] || '')}</span></div>
+    <div class="boites" title="Boîte Leitner">${[1, 2, 3, 4, 5].map(b => `<span class="${st.boite >= b ? 'on' : ''}">${b}</span>`).join('')}</div>
+    <div class="flash" id="fl"><div class="flash-in">
+      <div class="face recto"><div class="gros">${esc(c.recto)}</div><p class="centre doux" style="margin-top:14px">Touche pour retourner</p></div>
+      <div class="face verso"><div class="gros">${esc(c.verso)}</div>${c.pourquoi ? `<div class="bloc b-pourquoi"><b class="t">🧠 Le pourquoi</b>${esc(c.pourquoi)}</div>` : ''}<div class="source">📚 ${esc(sourceTexte(e, c.s))}</div></div>
+    </div></div>
+    <div id="act"><button class="btn" id="ret">Retourner la carte</button></div>`);
+    const ret = () => {
+      $('#fl').classList.add('retournee'); son('clic');
+      $('#act').innerHTML = `<div class="rangee"><button class="btn rouge" data-r="0">😵 Raté</button><button class="btn orange" data-r="1">🤔 Pas sûre</button><button class="btn vert" data-r="2">😎 Je savais</button></div>`;
+      $$('[data-r]').forEach(b => b.onclick = () => noter(+b.dataset.r));
+    };
+    $('#ret').onclick = ret; $('#fl').onclick = () => { if (!$('#fl').classList.contains('retournee')) ret(); };
+    function noter(r) {
+      if (!libre) {
+        let b = st.boite || 0;
+        b = r === 2 ? Math.min(5, b + 1) : r === 1 ? Math.max(1, b) : 1;
+        S.cartes[c.id] = { boite: b, due: ajouteJours(dateLocale(), INTERVALLES[b]) };
+      }
+      if (r === 2) sues++;
+      S.stats.cartes++; S.stats.cartesDepuisCafe++;
+      if (S.stats.cartesDepuisCafe >= 10) { S.stats.cartesDepuisCafe = 0; if (S.cafes < CAFES_MAX) { S.cafes++; toast('☕ +1 café rechargé grâce aux flashcards !'); } }
+      gagneXP(r === 2 ? 5 : 2);
+      i++; if (i < paquet.length) carte(); else fin();
+    }
+  }
+  function fin() {
+    confettis();
+    ecranResultat('Flashcards', `<div class="grand-emoji">🧠</div><h2>Session terminée !</h2><p>${sues}/${paquet.length} cartes sues du premier coup.</p><p class="doux">Les cartes ratées reviennent demain, les cartes sues de plus en plus tard (1 → 2 → 4 → 7 → 14 jours).</p>`,
+      [['Encore une session', () => lancerFlash(ids)], ['Retour', () => history.back(), 'sec']]);
+  }
+  carte();
+}
+
+/* ============================== VUE : RÉVISION (toutes matières) ============================== */
+VUES.revision = () => {
+  const lignes = ETAGES.map(e => { const { dues, nouvelles } = cartesDues([e.id]); return `<button class="etage" style="--c:${e.couleur}" data-f="${e.id}"><span class="em">${e.emoji}</span><span class="info"><b>${esc(e.titre)}</b><small>${dues.length} à revoir · ${nouvelles.length} nouvelles · ${e.cartes.length} au total</small></span></button>`; }).join('');
+  const { dues } = cartesDues();
+  const boites = [0, 0, 0, 0, 0, 0]; Object.values(S.cartes).forEach(c => boites[c.boite || 0]++);
+  vue(`${entete('🃏 Salle de révision', false)}
+  ${monito('Les flashcards fonctionnent en <b>répétition espacée</b> : ce que tu sais revient moins souvent, ce que tu rates revient demain. 10 cartes = 1 café ☕')}
+  <button class="btn violet" id="tout">Tout réviser (${dues.length} à revoir)</button>
+  ${lignes}
+  <div class="carte"><b>Tes boîtes</b><div class="boites" style="justify-content:space-around;margin-top:8px">${[1, 2, 3, 4, 5].map(b => `<div class="centre"><span class="on" style="margin:auto">${b}</span><small>${boites[b]}</small></div>`).join('')}</div></div>
+  <button class="btn sec" id="calc">🧮 Calcul flash toutes matières</button>`);
+  $('#tout').onclick = () => lancerFlash(null);
+  $$('[data-f]').forEach(b => b.onclick = () => lancerFlash([b.dataset.f]));
+  $('#calc').onclick = () => jeuCalcul(null);
+};
+
+/* ============================== VUE : VESTIAIRE (PROFIL) ============================== */
+VUES.vestiaire = () => {
+  const g = grade(), st = S.stats;
+  const taux = st.reponses ? Math.round(st.bonnes / st.reponses * 100) : 0;
+  vue(`${entete('🎖️ Vestiaire', false)}
+  <div class="carte centre"><div class="grand-emoji">${g.ico}</div><h2>${g.nom}</h2><p>${S.xp} XP · série ${S.serie.n} j (record ${S.serie.max} j)</p>
+  <div class="cafes">${'☕'.repeat(S.cafes)}${'▫️'.repeat(CAFES_MAX - S.cafes)}</div><small>Les cafés se perdent sur une erreur grave en garde et se rechargent avec les flashcards (10 cartes = 1 café).</small></div>
+  <div class="carte"><b>Grades</b>${GRADES.map(x => `<div class="ligne"><span>${x[2]} ${x[1]}</span><span>${S.xp >= x[0] ? '✅' : x[0] + ' XP'}</span></div>`).join('')}</div>
+  <div class="carte"><b>Maîtrise par étage</b>${ETAGES.map(e => `<div class="ligne"><span>${e.emoji} ${esc(e.titre)}</span><span>${maitrise(e.id)}%</span></div>`).join('')}</div>
+  <h2>Badges (${Object.keys(S.badges).length}/${BADGES.length})</h2>
+  <div class="grille3">${BADGES.map(([id, ico, nom, desc]) => `<div class="badge ${S.badges[id] ? '' : 'off'}" title="${esc(desc)}"><span class="ico">${ico}</span><b>${esc(nom)}</b><small>${esc(desc)}</small></div>`).join('')}</div>
+  <div class="carte"><b>Statistiques</b>
+  <div class="ligne"><span>Réponses</span><span>${st.reponses} (${taux}% justes)</span></div>
+  <div class="ligne"><span>Meilleur combo</span><span>${st.meilleurCombo}</span></div>
+  <div class="ligne"><span>Flashcards révisées</span><span>${st.cartes}</span></div>
+  <div class="ligne"><span>Gardes terminées</span><span>${st.gardes}</span></div>
+  <div class="ligne"><span>Escape games réussis</span><span>${st.escapes}</span></div>
+  <div class="ligne"><span>Mini-jeux</span><span>${st.miniJeux}</span></div></div>`);
+};
+
+/* ============================== VUE : RÉGLAGES / À PROPOS ============================== */
+VUES.parametres = () => {
+  const r = S.reglages;
+  const nbQ = ETAGES.reduce((n, e) => n + questionsEtage(e).length, 0), nbC = ETAGES.reduce((n, e) => n + e.cartes.length, 0);
+  vue(`${entete('⚙️ Réglages', false)}
+  <div class="carte">
+    <label class="switch"><span>🌗 Thème</span><select id="theme"><option value="auto">Automatique</option><option value="light">Clair</option><option value="dark">Sombre</option></select></label>
+    <label class="switch"><span>🔊 Sons</span><input type="checkbox" id="son" ${r.son ? 'checked' : ''} style="width:24px;height:24px"></label>
+    <label class="switch"><span>📳 Vibrations</span><input type="checkbox" id="vib" ${r.vibration ? 'checked' : ''} style="width:24px;height:24px"></label>
+    <label class="switch"><span>✨ Animations</span><input type="checkbox" id="anim" ${r.animations ? 'checked' : ''} style="width:24px;height:24px"></label>
+  </div>
+  <div class="carte"><b>💾 Sauvegarde</b><p class="doux">Ta progression est enregistrée dans ce navigateur. Exporte-la de temps en temps (changement de téléphone, nettoyage…).${S.dernierExport ? ' Dernier export : ' + dateFr(S.dernierExport) + '.' : ''}</p>
+  <button class="btn" id="exp">Exporter ma progression</button>
+  <label class="btn sec" for="imp">Importer une sauvegarde</label><input type="file" id="imp" accept="application/json,.json" hidden>
+  <button class="btn rouge" id="raz">Tout recommencer à zéro</button></div>
+  <div class="carte"><b>ℹ️ À propos</b>
+  <p>Garde de nuit v${APP_VERSION} — jeu de révision des stages infirmiers (bac 4). ${nbC} flashcards et ${nbQ} questions réparties sur ${ETAGES.length} étages.</p>
+  <p class="doux">Le contenu s’appuie sur des recommandations publiées (ERC, Surviving Sepsis Campaign, SCCM, OMS, NICE, AHA, Brain Trauma Foundation, RCP…) citées sous chaque explication. Il ne remplace ni le cours, ni le protocole du service, ni l’avis de ton/ta référent(e). Les doses de médicaments se vérifient toujours sur le CBIP et la prescription.</p>
+  <p class="doux">Tous les patients du jeu sont fictifs.</p>
+  <p class="signature" style="margin:8px 0 0">Créé par Gauthier Doumont</p></div>`);
+  $('#theme').value = r.theme;
+  $('#theme').onchange = e => { r.theme = e.target.value; appliquerReglages(); sauver(); };
+  $('#son').onchange = e => { r.son = e.target.checked; sauver(); son('ok'); };
+  $('#vib').onchange = e => { r.vibration = e.target.checked; sauver(); vibre(40); };
+  $('#anim').onchange = e => { r.animations = e.target.checked; appliquerReglages(); sauver(); };
+  $('#exp').onclick = exporter;
+  $('#imp').onchange = e => { if (e.target.files[0]) importer(e.target.files[0]); };
+  $('#raz').onclick = () => { if (confirm('Effacer toute ta progression ? (Pense à exporter avant !)') && confirm('Vraiment sûre ? C’est définitif.')) { S = etatParDefaut(); sauver(); appliquerReglages(); toast('Nouvelle partie !'); aller('accueil', {}, true); } };
+};
+
+/* ============================== MODE GARDE ============================== */
+const NORMES = { FC: [50, 110], PAS: [90, 160], PAM: [65, 110], SpO2: [92, 100], FR: [10, 24], T: [36, 38.4], GCS: [15, 15] };
+function moniteurHTML(v) {
+  const pam = v.PAS && v.PAD ? Math.round((v.PAS + 2 * v.PAD) / 3) : null;
+  const al = (k, x) => x != null && NORMES[k] && (x < NORMES[k][0] || x > NORMES[k][1]) ? 'alerte' : '';
+  return `<div class="moniteur" role="img" aria-label="Moniteur : FC ${v.FC}, PA ${v.PAS}/${v.PAD}, SpO2 ${v.SpO2}%, FR ${v.FR}"><canvas id="ecg" height="70"></canvas>
+  <div class="constantes">
+    <div class="cst fc ${al('FC', v.FC)}"><small>FC /min</small><b>${v.FC ?? '--'}</b></div>
+    <div class="cst pa ${al('PAS', v.PAS) || al('PAM', pam)}"><small>PA (PAM)</small><b>${v.PAS ?? '--'}/${v.PAD ?? '--'}</b> <small style="display:inline">(${pam ?? '--'})</small></div>
+    <div class="cst sp ${al('SpO2', v.SpO2)}"><small>SpO₂ %</small><b>${v.SpO2 ?? '--'}</b></div>
+    <div class="cst fr ${al('FR', v.FR)}"><small>FR /min</small><b>${v.FR ?? '--'}</b></div>
+    <div class="cst t ${al('T', v.T)}"><small>T °C</small><b>${v.T ?? '--'}</b></div>
+    <div class="cst gcs ${v.GCS != null && v.GCS < 15 ? 'alerte' : ''}"><small>${v.GCSlabel || 'GCS'}</small><b>${v.GCS ?? '--'}</b></div>
+  </div></div>`;
+}
+function animerECG(fc) {
+  const c = $('#ecg'); if (!c) return;
+  const ctx = c.getContext('2d'); c.width = c.clientWidth * (devicePixelRatio || 1); c.height = 70 * (devicePixelRatio || 1);
+  const W = c.width, H = c.height, k = devicePixelRatio || 1;
+  if (!W || !H) return;
+  const periode = 60 / Math.max(fc || 70, 20); // secondes par battement
+  const vitesse = W / 4;                       // 4 secondes à l’écran
+  const forme = t => { // t ∈ [0,1[ phase du battement
+    if (t < .08) return Math.sin(t / .08 * Math.PI) * .12;
+    if (t > .16 && t < .18) return -.15; if (t >= .18 && t < .21) return 1; if (t >= .21 && t < .24) return -.3;
+    if (t > .38 && t < .52) return Math.sin((t - .38) / .14 * Math.PI) * .25; return 0;
+  };
+  if (!animationsOn()) {
+    ctx.strokeStyle = '#4BE07A'; ctx.lineWidth = 2 * k; ctx.beginPath();
+    for (let x = 0; x < W; x++) { const y = H * .62 - forme(((x / vitesse) / periode) % 1) * H * .5; x ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+    ctx.stroke(); return;
+  }
+  let x = 0, t0 = performance.now(), dernierY = H * .62, id, dernierBip = -1;
+  ctx.fillStyle = '#071016'; ctx.fillRect(0, 0, W, H);
+  function f(now) {
+    // now (horodatage rAF) peut précéder t0 : on borne pour éviter une boucle infinie
+    const t = Math.max(0, (now - t0) / 1000), nx = ((Math.floor(t * vitesse) % W) + W) % W;
+    let garde = 0;
+    while (x !== nx && garde++ < W) {
+      const tt = (t - (((nx - x + W) % W) / vitesse));
+      const y = H * .62 - forme((tt / periode) % 1) * H * .5;
+      ctx.fillStyle = '#071016'; ctx.fillRect(x, 0, 8 * k, H);
+      ctx.strokeStyle = '#4BE07A'; ctx.lineWidth = 2 * k; ctx.beginPath(); ctx.moveTo(x, dernierY); ctx.lineTo(x + 1, y); ctx.stroke();
+      dernierY = y; x = (x + 1) % W; if (x === 0) dernierY = H * .62;
+    }
+    const battement = Math.floor(t / periode); if (battement !== dernierBip && S.reglages.son) { dernierBip = battement; son('bip'); }
+    id = requestAnimationFrame(f);
+  }
+  id = requestAnimationFrame(f);
+  nettoyages.push(() => cancelAnimationFrame(id));
+}
+VUES.garde = ({ id }) => {
+  const e = etage(id), g = e.garde;
+  vue(`${entete('🌙 ' + esc(g.titre), true)}
+  ${monito(esc(g.intro))}
+  <div class="carte"><b>Comment ça marche ?</b><p>À chaque étape, choisis l’action la plus juste. Les constantes évoluent selon tes choix. Une erreur grave coûte ☕ un café.</p>
+  <p>Tu as <span class="cafes">${'☕'.repeat(S.cafes) || '0 café'}</span>${S.cafes === 0 ? ' — tu joues fatiguée : pas de bonus café en fin de garde. Révise des flashcards pour recharger !' : ''}</p>
+  <p class="doux">Score final = qualité des décisions + transmission SBAR.${S.etages[id].garde != null ? ' Ton record : ' + S.etages[id].garde + '%.' : ''}</p></div>
+  <button class="btn violet" id="go">Prendre la garde</button>`);
+  $('#go').onclick = () => jouerGarde(id);
+};
+function jouerGarde(id) {
+  const e = etage(id), g = e.garde;
+  let points = 0, max = 0, erreurs = 0, v = Object.assign({}, g.noeuds.debut.v || {}), journal = [];
+  function noeud(nid) {
+    const n = g.noeuds[nid];
+    if (n.v) v = Object.assign({}, v, n.v);
+    if (n.fin) return sbar(n);
+    const m = vue(`${entete('🌙 ' + esc(g.titre), true)}
+      ${n.patient ? `<div class="chip" style="margin-bottom:6px">🛏️ ${esc(n.patient)}</div>` : ''}
+      ${moniteurHTML(v)}
+      <div class="carte">${n.heure ? `<small class="doux">🕑 ${esc(n.heure)}</small>` : ''}<p>${esc(n.texte)}</p></div>
+      <div id="ch">${shuffle(n.choix.map((c, k) => k)).map(k => `<button class="choix" data-k="${k}">${esc(n.choix[k].t)}</button>`).join('')}</div><div id="fb"></div>`);
+    animerECG(v.FC);
+    $$('[data-k]', m).forEach(b => b.onclick = () => {
+      const c = n.choix[+b.dataset.k];
+      max += 2; points += c.q;
+      $$('[data-k]', m).forEach(x => { x.disabled = true; const cc = n.choix[+x.dataset.k]; if (cc.q === 2) x.classList.add('ok'); });
+      if (c.q < 2) b.classList.add('ko');
+      if (c.q === 0) { erreurs++; if (S.cafes > 0) { S.cafes--; toast('☕ −1 café'); } son('ko'); vibre([80, 50, 80]); }
+      else if (c.q === 2) { son('ok'); vibre(30); gagneXP(15); } else son('clic');
+      sauver();
+      journal.push(c.q);
+      const titre = c.q === 2 ? '<div class="verdict ok">Excellent choix ✅</div>' : c.q === 1 ? '<div class="verdict" style="color:var(--orange)">Acceptable, mais pas le plus prioritaire 🟠</div>' : '<div class="verdict ko">Décision risquée ❌</div>';
+      $('#fb').innerHTML = `${titre}<div class="bloc b-pourquoi"><b class="t">🧠 Le pourquoi</b>${esc(c.fb)}</div>${n.s ? `<div class="source">📚 ${esc(sourceTexte(e, n.s))}</div>` : ''}<button class="btn" id="suiv">Continuer →</button>`;
+      $('#suiv').onclick = () => { if (c.v) v = Object.assign({}, v, c.v); noeud(c.suite); };
+      $('#fb').scrollIntoView({ behavior: animationsOn() ? 'smooth' : 'auto', block: 'start' });
+    });
+  }
+  function sbar(n) {
+    const lettres = ['S — Situation', 'B — Background (antécédents)', 'A — Assessment (évaluation)', 'R — Recommandation'];
+    const items = g.sbar.map((t, k) => ({ t, k }));
+    let melange = shuffle(items), choisi = [];
+    function dessin() {
+      vue(`${entete('📞 Transmission SBAR', true)}
+      ${monito(esc(n.texte) + '<br><b>Dernière étape : appelle le médecin.</b> Remets les 4 morceaux de ta transmission dans l’ordre S-B-A-R.')}
+      <div class="carte"><b>Ta transmission</b>${choisi.map((x, k) => `<div class="etape"><span class="n">${'SBAR'[k]}</span>${esc(x.t)}</div>`).join('') || '<p class="doux">Touche les éléments ci-dessous dans l’ordre.</p>'}</div>
+      <div>${melange.filter(x => !choisi.includes(x)).map(x => `<button class="etape" data-k="${x.k}">${esc(x.t)}</button>`).join('')}</div>
+      ${choisi.length ? '<button class="btn sec" id="annul">↩️ Annuler le dernier</button>' : ''}`);
+      $$('[data-k]').forEach(b => b.onclick = () => { choisi.push(items[+b.dataset.k]); son('clic'); if (choisi.length === 4) fin(); else dessin(); });
+      if ($('#annul')) $('#annul').onclick = () => { choisi.pop(); dessin(); };
+    }
+    function fin() {
+      const justes = choisi.filter((x, k) => x.k === k).length;
+      if (justes === 4) S.stats.sbarParfaits++;
+      const decisions = max ? points / max : 1;
+      const bonusCafe = S.cafes > 0 ? 5 : 0;
+      const score = Math.min(100, Math.round(decisions * 80 + justes / 4 * 15 + bonusCafe));
+      const st = S.etages[id]; st.garde = Math.max(st.garde || 0, score);
+      S.stats.gardes++; gagneXP(Math.round(score * 1.5)); if (score >= 80) confettis(); son('niveau'); sauver();
+      ecranResultat('Rapport de garde', `<div class="grand-emoji">${score >= 80 ? '🌅' : score >= 50 ? '🌤️' : '🌧️'}</div><h2>Score : ${score}%</h2>
+      <div class="ligne"><span>🩺 Décisions</span><span>${Math.round(decisions * 100)}%</span></div>
+      <div class="ligne"><span>❌ Décisions risquées</span><span>${erreurs}</span></div>
+      <div class="ligne"><span>📞 SBAR</span><span>${justes}/4</span></div>
+      <div class="ligne"><span>☕ Bonus café</span><span>${bonusCafe ? '+5' : '0'}</span></div>
+      <div class="bloc b-clair" style="text-align:left"><b class="t">📞 La bonne transmission</b>${lettres.map((l, k) => `<b>${l}</b> : ${esc(g.sbar[k])}`).join('<br>')}</div>
+      <div class="bloc b-stage" style="text-align:left"><b class="t">🩺 À retenir de cette garde</b>${esc(g.retenir)}</div>`,
+        [['Rejouer la garde', () => jouerGarde(id), 'violet'], ['Retour à l’étage', () => aller('etage', { id }, true), 'sec']]);
+    }
+    dessin();
+  }
+  noeud('debut');
+}
+
+/* ============================== ESCAPE GAME ============================== */
+VUES.escape = ({ id }) => {
+  const e = etage(id), x = e.escape;
+  vue(`${entete('🔐 ' + esc(x.titre), true)}
+  <div class="carte"><div class="grand-emoji">🚪</div><p>${esc(x.intro)}</p>
+  <p class="doux">${x.enigmes.length} énigmes. Chaque énigme résolue te donne un chiffre du code. Mauvaise réponse = +30 s de pénalité. Un indice coûte +20 s.</p>
+  ${S.etages[id].escape ? `<p>⏱️ Ton record : <b>${fmtTemps(S.etages[id].escape)}</b></p>` : ''}</div>
+  <button class="btn violet" id="go">Entrer dans la salle</button>`);
+  $('#go').onclick = () => jouerEscape(id);
+};
+function jouerEscape(id) {
+  const e = etage(id), x = e.escape;
+  let k = 0, penalite = 0, debut = Date.now(), chiffres = [], minuteur;
+  const temps = () => Math.floor((Date.now() - debut) / 1000) + penalite;
+  function cadre(contenu) {
+    const m = vue(`${entete('🔐 ' + esc(x.titre), true)}
+      <div class="progression"><span>Énigme ${Math.min(k + 1, x.enigmes.length)}/${x.enigmes.length}</span><span>⏱️ <b id="tps">${fmtTemps(temps())}</b></span></div>
+      <div class="code">${x.enigmes.map((en, j) => `<span class="${j < chiffres.length ? 'trouve' : ''}">${j < chiffres.length ? chiffres[j] : '?'}</span>`).join('')}</div>${contenu}`);
+    clearInterval(minuteur);
+    minuteur = setInterval(() => { const t = $('#tps'); if (t) t.textContent = fmtTemps(temps()); }, 1000);
+    nettoyages.push(() => clearInterval(minuteur));
+    return m;
+  }
+  function enigme() {
+    if (k >= x.enigmes.length) return final();
+    const en = x.enigmes[k];
+    let corps = `<div class="carte"><b>${esc(en.titre)}</b><p>${esc(en.texte)}</p></div>`;
+    if (en.type === 'code') corps += `<input id="rep" autocomplete="off" placeholder="Ta réponse"><button class="btn" id="val">Valider</button>`;
+    else if (en.type === 'ordre') corps += `<div id="ord"></div>`;
+    else corps += en.choix.map((c, j) => `<button class="choix" data-j="${j}">${esc(c)}</button>`).join('');
+    corps += `<button class="btn sec" id="ind">💡 Indice (+20 s)</button><div id="fb"></div>`;
+    const m = cadre(corps);
+    const reussi = () => { chiffres.push(en.chiffre); son('ok'); vibre(40); gagneXP(20); $('#fb').innerHTML = `<div class="verdict ok">🔓 Chiffre trouvé : ${en.chiffre}</div>${en.explication ? `<div class="bloc b-pourquoi"><b class="t">🧠 Le pourquoi</b>${esc(en.explication)}</div>` : ''}<button class="btn vert" id="suiv">Énigme suivante →</button>`; $('#suiv').onclick = () => { k++; enigme(); }; $$('button.choix,#val,#ind', m).forEach(b => b.disabled = true); };
+    const rate = el => { penalite += 30; son('ko'); vibre([60, 40, 60]); toast('❌ +30 s de pénalité'); if (el) { el.classList.add('secoue'); setTimeout(() => el.classList.remove('secoue'), 400); } };
+    $('#ind').onclick = () => { penalite += 20; $('#ind').disabled = true; $('#fb').innerHTML = `<div class="bloc b-stage"><b class="t">💡 Indice</b>${esc(en.indice)}</div>`; };
+    if (en.type === 'code') {
+      const norm = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+      const valider = () => { const r = norm($('#rep').value); if (en.reponses.map(norm).includes(r)) reussi(); else rate($('#rep')); };
+      $('#val').onclick = valider; $('#rep').onkeydown = ev => { if (ev.key === 'Enter') valider(); };
+    } else if (en.type === 'ordre') {
+      let pris = []; const melange = shuffle(en.etapes.map((t, j) => j));
+      const dessin = () => {
+        $('#ord').innerHTML = `<div class="carte">${pris.map((j, n) => `<div class="etape"><span class="n">${n + 1}</span>${esc(en.etapes[j])}</div>`).join('') || '<small class="doux">Touche les étapes dans le bon ordre.</small>'}</div>` +
+          melange.filter(j => !pris.includes(j)).map(j => `<button class="etape" data-o="${j}">${esc(en.etapes[j])}</button>`).join('') + (pris.length ? '<button class="btn sec" id="raz">↩️ Recommencer</button>' : '');
+        $$('[data-o]').forEach(b => b.onclick = () => { pris.push(+b.dataset.o); if (pris.length === en.etapes.length) { if (pris.every((j, n) => j === n)) { dessin(); reussi(); } else { rate($('#ord')); pris = []; dessin(); } } else dessin(); });
+        if ($('#raz')) $('#raz').onclick = () => { pris = []; dessin(); };
+      };
+      dessin();
+    } else {
+      $$('[data-j]', m).forEach(b => b.onclick = () => { if (+b.dataset.j === en.b) { b.classList.add('ok'); reussi(); } else { b.classList.add('ko'); b.disabled = true; rate(b); } });
+    }
+  }
+  function final() {
+    const code = x.enigmes.map(en => en.chiffre).join('');
+    cadre(`<div class="carte"><b>🚪 La porte finale</b><p>${esc(x.final)}</p></div><input id="code" inputmode="numeric" autocomplete="off" placeholder="Code à ${code.length} chiffres"><button class="btn vert" id="ouvrir">Ouvrir la porte</button>`);
+    const ouvrir = () => {
+      if ($('#code').value.replace(/\D/g, '') === code) {
+        clearInterval(minuteur);
+        const t = temps(), st = S.etages[id], premier = !st.escape;
+        st.escape = st.escape ? Math.min(st.escape, t) : t; if (premier) S.stats.escapes++;
+        gagneXP(premier ? 120 : 40); confettis(); son('niveau'); sauver();
+        ecranResultat('Évadée !', `<div class="grand-emoji">🔓</div><h2>Porte ouverte en ${fmtTemps(t)}</h2><p>${esc(x.victoire)}</p><p class="doux">Record : ${fmtTemps(st.escape)} (dont ${penalite} s de pénalités)</p>`,
+          [['Rejouer (battre le record)', () => jouerEscape(id), 'violet'], ['Retour à l’étage', () => aller('etage', { id }, true), 'sec']]);
+      } else { penalite += 30; son('ko'); toast('❌ Mauvais code (+30 s)'); }
+    };
+    $('#ouvrir').onclick = ouvrir; $('#code').onkeydown = ev => { if (ev.key === 'Enter') ouvrir(); };
+  }
+  enigme();
+}
+
+/* ============================== MINI-JEUX ============================== */
+VUES.mini = ({ id }) => {
+  const e = etage(id), m = e.mini || {};
+  const jeux = [];
+  if ((m.ordre || []).length) jeux.push(['ordre', '🔢', 'Remets dans l’ordre', 'Les étapes d’un soin']);
+  if ((m.tri || []).length) jeux.push(['tri', '🗂️', 'Tri express', 'Classe chaque élément']);
+  if ((m.associe || []).length) jeux.push(['associe', '🔗', 'Associe', 'Relie les paires']);
+  if ((m.erreur || []).length) jeux.push(['erreur', '🔍', 'Trouve l’erreur', 'Repère ce qui cloche']);
+  if ((m.glasgow || []).length) jeux.push(['glasgow', '👁️', 'Glasgow express', 'Calcule Y + V + M']);
+  if (m.news2) jeux.push(['news2', '🚨', 'NEWS2 express', 'Score d’alerte précoce']);
+  if ((m.calculs || []).length) jeux.push(['calcul', '🧮', 'Calcul flash', 'PAM, débits, doses…']);
+  vue(`${entete('🎮 Mini-jeux — ' + esc(e.titre), true)}<div class="grille2">${jeux.map(j => `<button class="tuile" data-j="${j[0]}"><span class="ico">${j[1]}</span><b>${j[2]}</b><small>${j[3]}</small></button>`).join('')}</div>`);
+  $$('[data-j]').forEach(b => b.onclick = () => {
+    const j = b.dataset.j;
+    ({ ordre: jeuOrdre, tri: jeuTri, associe: jeuAssocie, erreur: jeuErreur, glasgow: jeuGlasgow, news2: jeuNews2, calcul: () => jeuCalcul(id) })[j](id);
+  });
+};
+function finMini(id, titre, ok, total, rejouer, extra = '') {
+  S.stats.miniJeux++; gagneXP(ok * 8 + 10); if (ok === total) { confettis(); son('niveau'); }
+  ecranResultat(titre, `<div class="grand-emoji">${ok === total ? '🌟' : ok >= total / 2 ? '👍' : '💪'}</div><h2>${ok}/${total}</h2>${extra}`,
+    [['Rejouer', rejouer, 'violet'], ['Autres mini-jeux', () => id ? aller('mini', { id }, true) : history.back(), 'sec']]);
+}
+function jeuOrdre(id) {
+  const e = etage(id), p = pick(e.mini.ordre);
+  let pris = []; const melange = shuffle(p.etapes.map((t, j) => j));
+  function dessin(fini) {
+    vue(`${entete('🔢 Remets dans l’ordre', true)}<div class="carte"><b>${esc(p.titre)}</b><br><small class="doux">Touche les étapes dans l’ordre.</small></div>
+    <div class="carte">${pris.map((j, n) => `<div class="etape ${fini ? (j === n ? 'ok' : 'ko') : ''}"><span class="n">${n + 1}</span>${esc(p.etapes[j])}</div>`).join('') || '<small class="doux">Ta séquence apparaîtra ici.</small>'}</div>
+    ${fini ? '' : melange.filter(j => !pris.includes(j)).map(j => `<button class="etape" data-o="${j}">${esc(p.etapes[j])}</button>`).join('')}
+    ${!fini && pris.length ? '<button class="btn sec" id="annul">↩️ Annuler le dernier</button>' : ''}<div id="fb"></div>`);
+    $$('[data-o]').forEach(b => b.onclick = () => { pris.push(+b.dataset.o); son('clic'); dessin(pris.length === p.etapes.length); });
+    if ($('#annul')) $('#annul').onclick = () => { pris.pop(); dessin(); };
+    if (fini) {
+      const ok = pris.filter((j, n) => j === n).length; S.stats.ordres = (S.stats.ordres || 0) + 1;
+      $('#fb').innerHTML = `<div class="bloc b-clair"><b class="t">✅ Le bon ordre</b>${p.etapes.map((t, n) => (n + 1) + '. ' + esc(t)).join('<br>')}</div>${p.pourquoi ? `<div class="bloc b-pourquoi"><b class="t">🧠 Le pourquoi</b>${esc(p.pourquoi)}</div>` : ''}<div class="source">📚 ${esc(sourceTexte(e, p.s))}</div><button class="btn" id="res">Voir le score</button>`;
+      $('#res').onclick = () => finMini(id, 'Remets dans l’ordre', ok, p.etapes.length, () => jeuOrdre(id));
+    }
+  }
+  dessin(false);
+}
+function jeuTri(id) {
+  const e = etage(id), p = pick(e.mini.tri), items = shuffle(p.items);
+  let k = 0, ok = 0, rates = [];
+  function item() {
+    if (k >= items.length) return finMini(id, 'Tri express', ok, items.length, () => jeuTri(id), rates.length ? `<div class="bloc b-piege" style="text-align:left"><b class="t">À revoir</b>${rates.map(r => esc(r[0]) + ' → <b>' + esc(p.cats[r[1]]) + '</b>').join('<br>')}</div>` : '');
+    const it = items[k];
+    vue(`${entete('🗂️ ' + esc(p.titre), true)}<div class="progression"><span>${k + 1}/${items.length}</span><span>✅ ${ok}</span></div>
+    <div class="carte centre" style="min-height:120px;display:flex;align-items:center;justify-content:center"><div class="question">${esc(it[0])}</div></div>
+    ${p.cats.map((c, j) => `<button class="btn ${['', 'violet', 'orange', 'vert'][j % 4]}" data-c="${j}">${esc(c)}</button>`).join('')}<div id="fb"></div>`);
+    $$('[data-c]').forEach(b => b.onclick = () => {
+      $$('[data-c]').forEach(x => x.disabled = true);
+      const juste = +b.dataset.c === it[1];
+      if (juste) { ok++; son('ok'); } else { rates.push(it); son('ko'); vibre(60); }
+      $('#fb').innerHTML = `<div class="verdict ${juste ? 'ok' : 'ko'}">${juste ? '✅ Oui !' : '❌ C’était : ' + esc(p.cats[it[1]])}</div>${it[2] ? `<div class="bloc b-pourquoi">${esc(it[2])}</div>` : ''}`;
+      setTimeout(() => { k++; item(); }, juste && !it[2] ? 700 : 1900);
+    });
+  }
+  item();
+}
+function jeuAssocie(id) {
+  const e = etage(id), p = pick(e.mini.associe);
+  const paires = shuffle(p.paires).slice(0, 6);
+  const gauche = shuffle(paires.map((x, j) => j)), droite = shuffle(paires.map((x, j) => j));
+  let sel = null, faites = [], erreurs = 0;
+  vue(`${entete('🔗 ' + esc(p.titre), true)}<p class="doux">Touche un élément à gauche puis sa paire à droite.</p>
+  <div class="assoc"><div>${gauche.map(j => `<button data-g="${j}" style="width:100%;margin-bottom:8px">${esc(paires[j][0])}</button>`).join('')}</div>
+  <div>${droite.map(j => `<button data-d="${j}" style="width:100%;margin-bottom:8px">${esc(paires[j][1])}</button>`).join('')}</div></div><p class="centre doux" id="err">Erreurs : 0</p>`);
+  $$('[data-g]').forEach(b => b.onclick = () => { if (faites.includes(+b.dataset.g)) return; $$('[data-g]').forEach(x => x.classList.remove('sel')); b.classList.add('sel'); sel = +b.dataset.g; son('clic'); });
+  $$('[data-d]').forEach(b => b.onclick = () => {
+    const j = +b.dataset.d; if (sel === null || faites.includes(j)) return;
+    if (j === sel) { faites.push(j); son('ok'); $(`[data-g="${j}"]`).classList.remove('sel'); $(`[data-g="${j}"]`).classList.add('fait'); b.classList.add('fait'); sel = null;
+      if (faites.length === paires.length) setTimeout(() => finMini(id, 'Associe', Math.max(0, paires.length - erreurs), paires.length, () => jeuAssocie(id), `<p>${erreurs} erreur(s)</p><div class="bloc b-clair" style="text-align:left">${paires.map(x => esc(x[0]) + ' ↔ <b>' + esc(x[1]) + '</b>').join('<br>')}</div><div class="source">📚 ${esc(sourceTexte(e, p.s))}</div>`), 500);
+    } else { erreurs++; son('ko'); vibre(60); b.classList.add('secoue'); setTimeout(() => b.classList.remove('secoue'), 400); $('#err').textContent = 'Erreurs : ' + erreurs; }
+  });
+}
+function jeuErreur(id) {
+  const e = etage(id), p = pick(e.mini.erreur);
+  const items = shuffle(p.items.map((x, j) => j));
+  vue(`${entete('🔍 Trouve l’erreur', true)}<div class="carte"><b>${esc(p.titre)}</b><p>${esc(p.scene)}</p><small class="doux">Sélectionne <b>toutes</b> les erreurs, puis valide.</small></div>
+  ${items.map(j => `<button class="choix" data-j="${j}">${esc(p.items[j][0])}</button>`).join('')}<button class="btn" id="val">Valider</button><div id="fb"></div>`);
+  $$('[data-j]').forEach(b => b.onclick = () => b.classList.toggle('sel'));
+  $('#val').onclick = () => {
+    let ok = 0;
+    $$('[data-j]').forEach(b => { const it = p.items[+b.dataset.j], s = b.classList.contains('sel'); b.disabled = true; b.classList.remove('sel'); if (s === it[1]) ok++; if (it[1]) b.classList.add(s ? 'ok' : 'ko'); else if (s) b.classList.add('ko'); });
+    $('#val').remove(); son(ok === p.items.length ? 'ok' : 'ko');
+    $('#fb').innerHTML = `<div class="bloc b-pourquoi"><b class="t">🧠 Les erreurs</b>${p.items.filter(x => x[1]).map(x => '• ' + esc(x[0]) + ' → ' + esc(x[2])).join('<br>')}</div><div class="source">📚 ${esc(sourceTexte(e, p.s))}</div><button class="btn" id="res">Voir le score</button>`;
+    $('#res').onclick = () => finMini(id, 'Trouve l’erreur', ok, p.items.length, () => jeuErreur(id));
+  };
+}
+function jeuGlasgow(id) {
+  const e = etage(id), cas = shuffle(e.mini.glasgow).slice(0, 5);
+  let k = 0, ok = 0;
+  const Y = ['1 · Aucune', '2 · À la pression', '3 · Au bruit / à la demande', '4 · Spontanée'];
+  const V = ['1 · Aucune', '2 · Sons', '3 · Mots', '4 · Confuse', '5 · Orientée'];
+  const M = ['1 · Aucune', '2 · Extension', '3 · Flexion anormale', '4 · Flexion normale (retrait)', '5 · Localise', '6 · Obéit'];
+  function un() {
+    if (k >= cas.length) return finMini(id, 'Glasgow express', ok, cas.length, () => jeuGlasgow(id), '<p class="doux">Rappel : on note la <b>meilleure</b> réponse observée, et « NT » si un élément n’est pas testable (ex. patient intubé pour le verbal).</p>');
+    const c = cas[k], rep = { y: 0, v: 0, m: 0 };
+    vue(`${entete('👁️ Glasgow express', true)}<div class="progression"><span>Patient ${k + 1}/${cas.length}</span><span>✅ ${ok}</span></div>
+    <div class="carte"><p>${esc(c.desc)}</p></div>
+    <b>👁️ Ouverture des yeux (Y)</b><div class="seg" data-g="y">${Y.map((t, j) => `<button data-v="${j + 1}">${esc(t)}</button>`).join('')}</div>
+    <b>💬 Réponse verbale (V)</b><div class="seg" data-g="v">${V.map((t, j) => `<button data-v="${j + 1}">${esc(t)}</button>`).join('')}</div>
+    <b>✋ Réponse motrice (M)</b><div class="seg" data-g="m">${M.map((t, j) => `<button data-v="${j + 1}">${esc(t)}</button>`).join('')}</div>
+    <button class="btn" id="val">Valider</button><div id="fb"></div>`);
+    $$('.seg').forEach(s => $$('button', s).forEach(b => b.onclick = () => { $$('button', s).forEach(x => x.classList.remove('sel')); b.classList.add('sel'); rep[s.dataset.g] = +b.dataset.v; }));
+    $('#val').onclick = () => {
+      if (!rep.y || !rep.v || !rep.m) return toast('Choisis Y, V et M');
+      const juste = rep.y === c.y && rep.v === c.v && rep.m === c.m;
+      if (juste) { ok++; S.stats.glasgowParfaits++; son('ok'); } else son('ko');
+      $('#val').remove();
+      $('#fb').innerHTML = `<div class="verdict ${juste ? 'ok' : 'ko'}">${juste ? '✅ Parfait' : '❌ Pas tout à fait'} — GCS = Y${c.y} V${c.v} M${c.m} = ${c.y + c.v + c.m}/15</div><div class="bloc b-pourquoi">${esc(c.pourquoi)}</div><button class="btn" id="suiv">Suivant →</button>`;
+      $('#suiv').onclick = () => { k++; un(); };
+    };
+  }
+  un();
+}
+/* NEWS2 (Royal College of Physicians, 2017) — échelle SpO₂ n°1 */
+function news2Score(p) {
+  const r = [];
+  r.push(['FR', p.fr <= 8 ? 3 : p.fr <= 11 ? 1 : p.fr <= 20 ? 0 : p.fr <= 24 ? 2 : 3]);
+  r.push(['SpO₂', p.sp <= 91 ? 3 : p.sp <= 93 ? 2 : p.sp <= 95 ? 1 : 0]);
+  r.push(['O₂', p.o2 ? 2 : 0]);
+  r.push(['PAS', p.pas <= 90 ? 3 : p.pas <= 100 ? 2 : p.pas <= 110 ? 1 : p.pas <= 219 ? 0 : 3]);
+  r.push(['FC', p.fc <= 40 ? 3 : p.fc <= 50 ? 1 : p.fc <= 90 ? 0 : p.fc <= 110 ? 1 : p.fc <= 130 ? 2 : 3]);
+  r.push(['Conscience', p.acvpu === 'A' ? 0 : 3]);
+  r.push(['T°', p.t <= 35 ? 3 : p.t <= 36 ? 1 : p.t <= 38 ? 0 : p.t <= 39 ? 1 : 2]);
+  return r;
+}
+function jeuNews2(id) {
+  let k = 0, ok = 0; const N = 4;
+  function un() {
+    if (k >= N) return finMini(id, 'NEWS2 express', ok, N, () => jeuNews2(id), '<div class="bloc b-stage" style="text-align:left"><b class="t">🩺 Seuils (RCP 2017)</b>0-4 : surveillance de routine, l’infirmier(ère) évalue · un paramètre à 3 ou total 5-6 : réévaluation urgente par le médecin, surveillance au moins horaire · ≥ 7 : réponse d’urgence (équipe de réanimation), monitorage continu. Toujours selon le protocole local.</div>');
+    const grave = Math.random() < .6;
+    const p = { fr: grave ? rnd(8, 30) : rnd(12, 22), sp: grave ? rnd(86, 98) : rnd(94, 99), o2: Math.random() < (grave ? .5 : .15), pas: grave ? rnd(80, 150) : rnd(105, 160), fc: grave ? rnd(45, 140) : rnd(55, 100), acvpu: Math.random() < (grave ? .25 : .03) ? pick(['C', 'V']) : 'A', t: +(grave ? (35 + Math.random() * 4.6) : (36.2 + Math.random() * 1.8)).toFixed(1) };
+    const det = news2Score(p), total = det.reduce((n, x) => n + x[1], 0);
+    vue(`${entete('🚨 NEWS2 express', true)}<div class="progression"><span>Patient ${k + 1}/${N}</span><span>✅ ${ok}</span></div>
+    <div class="carte"><div class="ligne"><span>Fréquence respiratoire</span><b>${p.fr}/min</b></div><div class="ligne"><span>SpO₂ (échelle 1)</span><b>${p.sp}%</b></div><div class="ligne"><span>Oxygène</span><b>${p.o2 ? 'Oui' : 'Air ambiant'}</b></div><div class="ligne"><span>PA systolique</span><b>${p.pas} mmHg</b></div><div class="ligne"><span>Pouls</span><b>${p.fc}/min</b></div><div class="ligne"><span>Conscience (ACVPU)</span><b>${{ A: 'Alerte', C: 'Confusion nouvelle', V: 'Réagit à la voix' }[p.acvpu]}</b></div><div class="ligne"><span>Température</span><b>${String(p.t).replace('.', ',')} °C</b></div></div>
+    <label>Score NEWS2 total :</label><input id="rep" type="number" inputmode="numeric" min="0" max="20"><button class="btn" id="val">Valider</button><div id="fb"></div>`);
+    const valider = () => {
+      const r = parseInt($('#rep').value, 10); if (isNaN(r)) return toast('Entre un nombre');
+      const juste = r === total; if (juste) { ok++; S.stats.calculs++; son('ok'); } else son('ko');
+      const unTrois = det.some(x => x[1] === 3);
+      const conduite = total >= 7 ? '🔴 ≥ 7 : réponse d’urgence, appel de l’équipe d’urgence/réa, monitorage continu.' : total >= 5 ? '🟠 5-6 : réévaluation urgente par le médecin, surveillance au moins horaire.' : unTrois ? '🟡 Un paramètre à 3 : avis médical urgent, surveillance au moins horaire.' : '🟢 0-4 : surveillance selon le protocole (au moins toutes les 4-12 h), évaluation infirmière.';
+      $('#val').remove();
+      $('#fb').innerHTML = `<div class="verdict ${juste ? 'ok' : 'ko'}">${juste ? '✅' : '❌'} NEWS2 = ${total}</div><div class="bloc b-tech">${det.map(x => x[0] + ' : ' + x[1]).join(' · ')}</div><div class="bloc b-stage">${conduite}</div><button class="btn" id="suiv">Suivant →</button>`;
+      $('#suiv').onclick = () => { k++; un(); };
+    };
+    $('#val').onclick = valider; $('#rep').onkeydown = ev => { if (ev.key === 'Enter' && $('#val')) valider(); };
+  }
+  un();
+}
+/* Générateurs de calculs — résultats arrondis, tolérance indiquée */
+const CALCULS = {
+  pam: () => { const pas = rnd(8, 18) * 10, pad = rnd(4, Math.min(10, pas / 10 - 3)) * 10; return { q: `PA = ${pas}/${pad} mmHg. Quelle est la PAM ?`, r: (pas + 2 * pad) / 3, tol: 1, u: 'mmHg', exp: `PAM = (PAS + 2 × PAD) / 3 = (${pas} + 2 × ${pad}) / 3 ≈ ${Math.round((pas + 2 * pad) / 3)} mmHg. La diastole compte double car le cœur passe plus de temps en diastole.` }; },
+  ppc: () => { const pam = rnd(65, 105), pic = rnd(5, 35); return { q: `PAM = ${pam} mmHg, PIC = ${pic} mmHg. Quelle est la pression de perfusion cérébrale (PPC) ?`, r: pam - pic, tol: 0, u: 'mmHg', exp: `PPC = PAM − PIC = ${pam} − ${pic} = ${pam - pic} mmHg. Cible BTF chez le traumatisé crânien grave : 60-70 mmHg.${pam - pic < 60 ? ' Ici la PPC est trop basse : risque d’ischémie cérébrale !' : ''}` }; },
+  debit: () => { const v = pick([250, 500, 1000]), h = pick([2, 4, 6, 8, 12, 24]); return { q: `Perfuser ${v} mL en ${h} h à la pompe. Quel débit (mL/h) ?`, r: v / h, tol: 1, u: 'mL/h', exp: `Débit = volume / temps = ${v} / ${h} ≈ ${Math.round(v / h * 10) / 10} mL/h.` }; },
+  gouttes: () => { const v = pick([500, 1000]), h = pick([4, 6, 8, 12, 24]); const r = v * 20 / (h * 60); return { q: `Perfuser ${v} mL en ${h} h par gravité (perfuseur standard : 20 gouttes = 1 mL). Combien de gouttes/min ?`, r, tol: 1, u: 'gttes/min', exp: `gouttes/min = volume (mL) × 20 / temps (min) = ${v} × 20 / ${h * 60} ≈ ${Math.round(r)} gouttes/min.` }; },
+  seringue: () => { const mg = pick([10, 20, 50, 100]), vol = 50, dose = pick([1, 2, 3, 4, 5]) * mg / 50; const conc = mg / vol; return { q: `Seringue : ${mg} mg dilués dans ${vol} mL. Prescription : ${dose} mg/h. À quel débit (mL/h) régler le pousse-seringue ?`, r: dose / conc, tol: 0.1, u: 'mL/h', exp: `Concentration = ${mg} / ${vol} = ${conc} mg/mL. Débit = dose / concentration = ${dose} / ${conc} = ${Math.round(dose / conc * 10) / 10} mL/h. (Exercice de calcul : en pratique, dilution et dose selon prescription et protocole.)` }; },
+  dose: () => { const kg = rnd(50, 95), mgkg = pick([0.5, 1, 1.5, 2]); return { q: `Prescription d’exercice : ${String(mgkg).replace('.', ',')} mg/kg pour une patiente de ${kg} kg. Dose totale en mg ?`, r: kg * mgkg, tol: 0.5, u: 'mg', exp: `Dose = ${String(mgkg).replace('.', ',')} × ${kg} = ${kg * mgkg} mg. (Calcul d’entraînement : toujours vérifier la dose réelle sur la prescription et le CBIP, avec double vérification.)` }; },
+  diurese: () => { const kg = rnd(50, 100), ml = rnd(10, 70); return { q: `Patient de ${kg} kg, diurèse de ${ml} mL sur la dernière heure. Diurèse en mL/kg/h (1 décimale) ?`, r: ml / kg, tol: 0.05, u: 'mL/kg/h', exp: `${ml} / ${kg} ≈ ${(ml / kg).toFixed(2).replace('.', ',')} mL/kg/h. ${ml / kg < 0.5 ? 'Sous 0,5 mL/kg/h : oligurie → à signaler.' : 'Au-dessus de 0,5 mL/kg/h : diurèse correcte.'}` }; }
+};
+function jeuCalcul(id) {
+  const types = id ? etage(id).mini.calculs : Object.keys(CALCULS);
+  let k = 0, ok = 0; const N = 5;
+  function un() {
+    if (k >= N) return finMini(id, 'Calcul flash', ok, N, () => jeuCalcul(id));
+    const c = CALCULS[pick(types)]();
+    vue(`${entete('🧮 Calcul flash', true)}<div class="progression"><span>Calcul ${k + 1}/${N}</span><span>✅ ${ok}</span></div>
+    <div class="carte"><div class="question">${esc(c.q)}</div></div>
+    <input id="rep" inputmode="decimal" autocomplete="off" placeholder="Réponse en ${esc(c.u)}"><button class="btn" id="val">Valider</button><div id="fb"></div>`);
+    const valider = () => {
+      const r = parseFloat($('#rep').value.replace(',', '.')); if (isNaN(r)) return toast('Entre un nombre');
+      const juste = Math.abs(r - c.r) <= c.tol + 1e-9; if (juste) { ok++; S.stats.calculs++; son('ok'); } else son('ko');
+      $('#val').remove();
+      $('#fb').innerHTML = `<div class="verdict ${juste ? 'ok' : 'ko'}">${juste ? '✅ Juste !' : '❌ Réponse attendue ≈ ' + (Math.round(c.r * 100) / 100).toString().replace('.', ',') + ' ' + esc(c.u)}</div><div class="bloc b-pourquoi">${esc(c.exp)}</div><button class="btn" id="suiv">Suivant →</button>`;
+      $('#suiv').onclick = () => { k++; un(); };
+    };
+    $('#val').onclick = valider; $('#rep').onkeydown = ev => { if (ev.key === 'Enter' && $('#val')) valider(); };
+  }
+  un();
+}
+
+/* ============================== VALIDATION DES DONNÉES ============================== */
+function valider() {
+  const pb = [];
+  ETAGES.forEach(e => {
+    e.questions.forEach((q, i) => {
+      const t = q.t || 'qcm';
+      if (!q.s) pb.push(`${e.id} q${i} sans source`);
+      if (!e.themes[q.th]) pb.push(`${e.id} q${i} thème inconnu ${q.th}`);
+      if (t === 'qcm' && (!q.c || !q.b || !q.b.length || q.b.some(k => k >= q.c.length))) pb.push(`${e.id} q${i} réponses invalides`);
+      if (t === 'vf' && typeof q.b !== 'boolean') pb.push(`${e.id} q${i} vf sans booléen`);
+    });
+    e.cartes.forEach((c, i) => { if (!e.themes[c[0]]) pb.push(`${e.id} carte ${i} thème inconnu`); if (!c[4]) pb.push(`${e.id} carte ${i} sans source`); });
+    const n = e.garde.noeuds;
+    Object.entries(n).forEach(([k, x]) => (x.choix || []).forEach(c => { if (!n[c.suite]) pb.push(`${e.id} garde ${k} → ${c.suite} introuvable`); }));
+    if (!e.garde.sbar || e.garde.sbar.length !== 4) pb.push(`${e.id} SBAR incomplet`);
+    e.escape.enigmes.forEach((en, i) => { if (en.type !== 'code' && en.type !== 'ordre' && (en.b == null || en.b >= en.choix.length)) pb.push(`${e.id} escape ${i} invalide`); });
+  });
+  if (pb.length) console.warn('Problèmes dans les données :', pb);
+  return pb;
+}
+
+/* ============================== ÉVÉNEMENTS / DÉMARRAGE ============================== */
+function demarrer() {
+  charger(); appliquerReglages(); valider();
+  matchMedia('(prefers-color-scheme: dark)').addEventListener && matchMedia('(prefers-color-scheme: dark)').addEventListener('change', appliquerReglages);
+  $$('nav.bas button').forEach(b => b.onclick = () => { son('clic'); aller(b.dataset.nav); });
+  aller('accueil', {}, true);
+  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('service-worker.js').catch(() => { });
+}
+window.GardeDeNuit = { valider, news2Score, CALCULS, version: APP_VERSION }; // utile pour les tests
+demarrer();

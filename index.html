@@ -1,0 +1,195 @@
+<!doctype html>
+<!-- Garde de nuit — jeu de révision des stages infirmiers. Créé par Gauthier Doumont -->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="author" content="Gauthier Doumont">
+<meta name="description" content="Jeu de révision pour les stages infirmiers : soins intensifs, bloc opératoire, neurochirurgie et jugement clinique.">
+<meta name="theme-color" content="#2E86AB">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<title>Garde de nuit</title>
+<style>
+/* ===== THÈME ===== */
+:root{
+  --bleu:#2E86AB;--vert:#3BB273;--violet:#7B5EA7;--orange:#F18F01;--rouge:#E15554;
+  --bg:#F3F7FA;--surface:#FFFFFF;--surface2:#E9F1F6;--texte:#2B2B2B;--doux:#5E6B75;--bord:#D5E0E8;
+  --bleu-l:#E3F1F7;--vert-l:#E5F6EC;--violet-l:#EFEAF6;--orange-l:#FEF1DE;--rouge-l:#FBE6E6;
+  --ombre:0 2px 10px rgba(30,60,90,.10);--rayon:16px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0F1720;--surface:#18232E;--surface2:#213040;--texte:#ECF1F5;--doux:#9FB0BD;--bord:#2C3D4D;
+  --bleu-l:#16303D;--vert-l:#173426;--violet-l:#272035;--orange-l:#35270F;--rouge-l:#3A1E20;
+  --ombre:0 2px 10px rgba(0,0,0,.4);
+}}
+:root[data-theme="dark"]{
+  --bg:#0F1720;--surface:#18232E;--surface2:#213040;--texte:#ECF1F5;--doux:#9FB0BD;--bord:#2C3D4D;
+  --bleu-l:#16303D;--vert-l:#173426;--violet-l:#272035;--orange-l:#35270F;--rouge-l:#3A1E20;
+  --ombre:0 2px 10px rgba(0,0,0,.4);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--texte);font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;font-size:16px;line-height:1.45;-webkit-tap-highlight-color:transparent;min-height:100vh}
+button{font:inherit;color:inherit}
+h1,h2,h3{line-height:1.2;margin:.2em 0 .4em}
+h1{font-size:1.45rem}h2{font-size:1.2rem}h3{font-size:1.05rem}
+p{margin:.4em 0}
+small,.doux{color:var(--doux)}
+#main{max-width:560px;margin:0 auto;padding:12px 16px calc(96px + env(safe-area-inset-bottom))}
+/* ===== BARRE DU HAUT ===== */
+.topbar{position:sticky;top:0;z-index:20;background:var(--bg);display:flex;align-items:center;gap:8px;padding:10px 0 8px;margin-bottom:4px}
+.topbar h1{flex:1;margin:0;font-size:1.15rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.btn-retour{min-width:44px;min-height:44px;border-radius:12px;border:1px solid var(--bord);background:var(--surface);cursor:pointer;font-size:1.2rem}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:999px;background:var(--surface);border:1px solid var(--bord);font-size:.85rem;font-weight:600}
+/* ===== CARTES / BOUTONS ===== */
+.carte{background:var(--surface);border-radius:var(--rayon);box-shadow:var(--ombre);padding:14px;margin:10px 0;border:1px solid var(--bord)}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:48px;padding:10px 14px;border-radius:14px;border:none;background:var(--bleu);color:#fff;font-weight:700;cursor:pointer;margin:8px 0;text-align:center}
+.btn:active{transform:scale(.98)}
+.btn.sec{background:var(--surface2);color:var(--texte);border:1px solid var(--bord)}
+.btn.vert{background:var(--vert)}.btn.rouge{background:var(--rouge)}.btn.orange{background:var(--orange)}.btn.violet{background:var(--violet)}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.rangee{display:flex;gap:8px}.rangee>*{flex:1}
+.grille2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tuile{background:var(--surface);border:1px solid var(--bord);border-radius:var(--rayon);box-shadow:var(--ombre);padding:14px 10px;min-height:110px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:4px;cursor:pointer}
+.tuile .ico{font-size:2rem}
+.tuile b{font-size:1rem}
+.tuile small{font-size:.78rem}
+.tuile.verrou{opacity:.55}
+/* ===== BARRES ===== */
+.barre{display:block;height:10px;border-radius:999px;background:var(--surface2);overflow:hidden;border:1px solid var(--bord)}
+.barre>i{display:block;height:100%;background:linear-gradient(90deg,var(--vert),var(--bleu));border-radius:999px;transition:width .6s}
+/* ===== HÔPITAL ===== */
+.hopital{position:relative;margin:14px 0 6px;padding:18px 10px 0;border-radius:22px 22px 6px 6px;background:linear-gradient(180deg,var(--bleu-l),var(--surface2));border:1px solid var(--bord)}
+.toit{text-align:center;font-weight:800;letter-spacing:.08em;font-size:.8rem;color:var(--bleu);margin-bottom:8px}
+.toit span{display:inline-block;background:var(--surface);padding:4px 12px;border-radius:8px;border:2px solid var(--bleu)}
+.etage{display:flex;align-items:center;gap:10px;width:100%;background:var(--surface);border:1px solid var(--bord);border-left:6px solid var(--c,var(--bleu));border-radius:12px;padding:10px 12px;margin:0 0 8px;cursor:pointer;text-align:left;min-height:64px;position:relative}
+.etage .num{font-size:.7rem;font-weight:800;color:var(--doux);width:22px;text-align:center}
+.etage .em{font-size:1.8rem}
+.etage .info{flex:1;min-width:0}
+.etage .info b{display:block}
+.etage .info small{display:block}
+.etage.vedette{box-shadow:0 0 0 3px var(--orange),var(--ombre);animation:pulse 2.4s infinite}
+.badge-stage{position:absolute;top:-9px;right:10px;background:var(--orange);color:#fff;font-size:.72rem;font-weight:800;padding:2px 8px;border-radius:999px}
+.rdc{display:flex;gap:8px;padding-bottom:10px}
+.rdc button{flex:1;min-height:52px;border-radius:12px;border:1px dashed var(--doux);background:var(--surface);cursor:pointer;font-weight:600}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 3px var(--orange),var(--ombre)}50%{box-shadow:0 0 0 6px rgba(241,143,1,.35),var(--ombre)}}
+/* ===== MASCOTTE ===== */
+.monito{display:flex;align-items:flex-end;gap:10px;margin:6px 0}
+.monito svg{flex:none;width:64px;height:64px}
+.bulle{position:relative;background:var(--surface);border:1px solid var(--bord);border-radius:16px 16px 16px 4px;padding:10px 12px;box-shadow:var(--ombre);font-size:.93rem}
+/* ===== QUIZ ===== */
+.question{font-size:1.08rem;font-weight:650}
+.choix{display:block;width:100%;text-align:left;min-height:52px;padding:12px 14px;margin:8px 0;border-radius:14px;border:2px solid var(--bord);background:var(--surface);cursor:pointer;font-size:1rem}
+.choix.sel{border-color:var(--bleu);background:var(--bleu-l)}
+.choix.ok{border-color:var(--vert);background:var(--vert-l)}
+.choix.ok::before{content:"✅ "}
+.choix.ko{border-color:var(--rouge);background:var(--rouge-l)}
+.choix.ko::before{content:"❌ "}
+.choix[disabled]{cursor:default}
+.progression{display:flex;justify-content:space-between;align-items:center;font-size:.85rem;color:var(--doux);margin-bottom:6px;gap:8px}
+.chrono{height:6px;border-radius:9px;background:var(--surface2);overflow:hidden;margin-bottom:10px}
+.chrono>i{display:block;height:100%;background:var(--orange);transition:width 1s linear}
+.combo{font-weight:800;color:var(--orange)}
+/* ===== BLOCS PÉDAGOGIQUES ===== */
+.bloc{border-radius:12px;padding:9px 12px;margin:8px 0;border-left:5px solid;font-size:.94rem}
+.bloc b.t{display:block;font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px}
+.b-clair{background:var(--vert-l);border-color:var(--vert)}
+.b-pourquoi{background:var(--violet-l);border-color:var(--violet)}
+.b-stage{background:var(--orange-l);border-color:var(--orange)}
+.b-piege{background:var(--rouge-l);border-color:var(--rouge)}
+.b-tech{background:var(--bleu-l);border-color:var(--bleu)}
+.source{font-size:.78rem;color:var(--doux);margin-top:6px}
+.verdict{font-weight:800;font-size:1.1rem;margin:6px 0}
+.verdict.ok{color:var(--vert)}.verdict.ko{color:var(--rouge)}
+/* ===== FLASHCARDS ===== */
+.flash{perspective:1000px;margin:12px 0}
+.flash-in{position:relative;min-height:240px;transition:transform .5s;transform-style:preserve-3d}
+.flash.retournee .flash-in{transform:rotateY(180deg)}
+.face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;background:var(--surface);border:2px solid var(--bord);border-radius:20px;padding:18px;display:flex;flex-direction:column;justify-content:center;box-shadow:var(--ombre);overflow:auto}
+.face.verso{transform:rotateY(180deg);border-color:var(--vert)}
+.face .gros{font-size:1.15rem;font-weight:700;text-align:center}
+.boites{display:flex;gap:4px;justify-content:center;margin:6px 0}
+.boites span{width:26px;height:26px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:.75rem;background:var(--surface2);border:1px solid var(--bord)}
+.boites span.on{background:var(--vert);color:#fff;border-color:var(--vert)}
+/* ===== MONITEUR ===== */
+.moniteur{background:#071016;border-radius:16px;padding:10px;color:#CFE8D8;font-family:ui-monospace,Menlo,Consolas,monospace;border:2px solid #22343F}
+.moniteur canvas{width:100%;height:70px;display:block}
+.constantes{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:6px}
+.cst{background:#0D1C24;border-radius:8px;padding:5px 7px}
+.cst small{display:block;color:#7FA1B0;font-size:.68rem}
+.cst b{font-size:1.15rem}
+.cst.fc b{color:#4BE07A}.cst.pa b{color:#FF6B6B}.cst.sp b{color:#4FC3F7}.cst.fr b{color:#FFD54F}.cst.t b{color:#F5F5F5}.cst.gcs b{color:#CE93D8}
+.cst.alerte{outline:2px solid #FF5252;animation:clign 1s infinite}
+.cst.alerte small::after{content:" ⚠"}
+@keyframes clign{50%{outline-color:transparent}}
+.cafes{letter-spacing:2px}
+/* ===== MINI-JEUX ===== */
+.etape{display:flex;align-items:center;gap:8px;width:100%;text-align:left;min-height:48px;padding:10px 12px;margin:6px 0;border-radius:12px;border:2px solid var(--bord);background:var(--surface);cursor:pointer}
+.etape .n{flex:none;width:26px;height:26px;border-radius:50%;background:var(--bleu);color:#fff;display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:800}
+.etape.ok{border-color:var(--vert);background:var(--vert-l)}.etape.ko{border-color:var(--rouge);background:var(--rouge-l)}
+.seg{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 12px}
+.seg button{min-width:44px;min-height:44px;border-radius:10px;border:2px solid var(--bord);background:var(--surface);font-weight:700;cursor:pointer}
+.seg button.sel{border-color:var(--violet);background:var(--violet-l)}
+.assoc{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.assoc button{min-height:56px;padding:8px;border-radius:12px;border:2px solid var(--bord);background:var(--surface);cursor:pointer;font-size:.9rem}
+.assoc button.sel{border-color:var(--bleu);background:var(--bleu-l)}
+.assoc button.fait{border-color:var(--vert);background:var(--vert-l);opacity:.6}
+.secoue{animation:secoue .35s}
+@keyframes secoue{25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+input[type=text],input[type=number],input:not([type]){width:100%;min-height:48px;font-size:1.1rem;padding:10px 12px;border-radius:12px;border:2px solid var(--bord);background:var(--surface);color:var(--texte)}
+.code{display:flex;gap:6px;justify-content:center;margin:8px 0}
+.code span{width:42px;height:52px;border-radius:10px;background:var(--surface2);border:2px solid var(--bord);display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:800}
+.code span.trouve{background:var(--vert-l);border-color:var(--vert)}
+/* ===== NAV BAS ===== */
+nav.bas{position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--surface);border-top:1px solid var(--bord);display:flex;justify-content:center;padding-bottom:env(safe-area-inset-bottom)}
+nav.bas .in{display:flex;width:100%;max-width:560px}
+nav.bas button{flex:1;min-height:60px;border:none;background:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:.72rem;gap:2px;color:var(--doux)}
+nav.bas button span{font-size:1.35rem}
+nav.bas button.actif{color:var(--bleu);font-weight:800}
+/* ===== DIVERS ===== */
+#fb{scroll-margin-top:72px}
+#toasts{position:fixed;top:12px;left:0;right:0;z-index:50;display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none}
+.toast{background:var(--texte);color:var(--bg);padding:10px 16px;border-radius:999px;font-weight:700;box-shadow:var(--ombre);animation:entre .3s;max-width:92vw;text-align:center}
+@keyframes entre{from{transform:translateY(-20px);opacity:0}}
+#confettis{position:fixed;inset:0;pointer-events:none;z-index:60}
+.badge{display:flex;flex-direction:column;align-items:center;text-align:center;padding:10px 6px;border-radius:14px;background:var(--surface);border:1px solid var(--bord);font-size:.78rem;gap:2px}
+.badge .ico{font-size:1.8rem}
+.badge.off{opacity:.35;filter:grayscale(1)}
+.grille3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.ligne{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--bord)}
+.ligne:last-child{border-bottom:none}
+.switch{display:flex;justify-content:space-between;align-items:center;min-height:48px;gap:10px}
+.switch select{min-height:40px;border-radius:10px;border:1px solid var(--bord);background:var(--surface);color:var(--texte);padding:0 8px;font:inherit}
+.alerte-export{background:var(--orange-l);border:1px solid var(--orange)}
+.signature{text-align:center;font-size:.72rem;color:var(--doux);opacity:.7;margin:24px 0 8px}
+details.fiche{background:var(--surface);border:1px solid var(--bord);border-radius:12px;margin:8px 0;padding:0 12px}
+details.fiche summary{min-height:48px;display:flex;align-items:center;font-weight:700;cursor:pointer}
+.carte-fiche{padding:8px 0;border-top:1px solid var(--bord);font-size:.93rem}
+.carte-fiche b{display:block}
+.grand-emoji{font-size:3.2rem;text-align:center}
+.centre{text-align:center}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+:root[data-anim="off"] *{animation:none!important;transition:none!important}
+</style>
+</head>
+<body>
+<div id="toasts" aria-live="polite"></div>
+<canvas id="confettis"></canvas>
+<main id="main"><p class="centre" style="margin-top:40vh">Chargement…</p></main>
+<nav class="bas" aria-label="Navigation principale"><div class="in">
+  <button data-nav="accueil"><span>🏥</span>Hôpital</button>
+  <button data-nav="revision"><span>🃏</span>Révision</button>
+  <button data-nav="vestiaire"><span>🎖️</span>Vestiaire</button>
+  <button data-nav="parametres"><span>⚙️</span>Réglages</button>
+</div></nav>
+<noscript><p style="padding:16px">Ce jeu a besoin de JavaScript pour fonctionner.</p></noscript>
+<script src="data/soins-intensifs.js"></script>
+<script src="data/bloc-operatoire.js"></script>
+<script src="data/neurochirurgie.js"></script>
+<script src="data/jugement-clinique.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
