@@ -246,7 +246,7 @@ Valider au chargement que chaque `suite` pointe vers un nœud existant et que ch
 
 ---
 
-## 8. État actuel (v1.1.0, 01/11/2026)
+## 8. État actuel (v1.2.0, 01/11/2026)
 
 Le jeu complet est en place et testé (Chromium 360 px, aucune erreur console, toutes les gardes et tous les mini-jeux joués jusqu'au bout, progression conservée au rechargement).
 
@@ -259,6 +259,8 @@ Le jeu complet est en place et testé (Chromium 360 px, aucune erreur console, t
 | `manifest.json` · `service-worker.js` · `icons/` · `.nojekyll` | Installation, hors ligne, GitHub Pages |
 
 **Contenu par étage** : 4 gardes · 12-14 situations flash · 2-3 classements « qui en premier ? » · 12 mots mystères · 4-6 « remets dans l'ordre » · 3-4 tris · 2 « trouve l'erreur » · 2-3 jeux d'association (aussi utilisés par le Memory) · ~50 cartes · ~40 questions rédigées (+ 1 question auto par carte). Neuro : 12 cas de Glasgow. Réa et Sommet : gaz du sang express. Sommet : NEWS2 express.
+
+**Accès aux mini-jeux** : bouton « 🎮 Jeux » de la barre du bas (Salle de jeux, choix de l'étage), bouton orange sur l'accueil, et tuile « Mini-jeux » en haut de chaque étage. Lancer un jeu crée une entrée d'historique (le bouton retour du téléphone ramène à la liste).
 
 **Mini-jeux (13)** : situations flash, qui en premier ?, sprint 60 s, memory, mot mystère, gaz du sang express, remets dans l'ordre, tri express, associe, trouve l'erreur, Glasgow express, NEWS2 express, calcul flash.
 

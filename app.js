@@ -8,11 +8,13 @@
  *   XP / grades / série / badges / cafés, export-import, PWA hors ligne.
  * 1.1.0 (2026-11-01) : plusieurs gardes par étage (data/scenarios-*.js), 6 nouveaux mini-jeux
  *   (situations flash, qui en premier ?, sprint 60 s, memory, mot mystère, gaz du sang express), 7 badges.
+ * 1.2.0 (2026-11-01) : « Salle de jeux » dans la barre du bas et sur l’accueil, tuile Mini-jeux remontée,
+ *   version affichée sur l’accueil, mise à jour automatique de l’appli installée.
  * ===================================================================== */
 'use strict';
 
 /* ============================== CONFIG ============================== */
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 const STORAGE_KEY = 'jeuxpourstage_v1';
 const SCHEMA_VERSION = 1;
 const INTERVALLES = [0, 1, 2, 4, 7, 14];          // jours avant révision, par boîte Leitner (1 à 5)
@@ -289,10 +291,11 @@ VUES.accueil = () => {
   <div class="barre" style="margin-top:6px"><i style="width:${pct}%"></i></div></div>
   ${monito(msg)}
   ${rappel ? `<div class="carte alerte-export">💾 Pense à <b>exporter ta sauvegarde</b> (le navigateur peut l’effacer).<button class="btn orange" id="exp">Exporter maintenant</button></div>` : ''}
+  <button class="btn orange" data-go="jeux">🎮 Mini-jeux : situations flash, memory, sprint…</button>
   ${(dues.length || nouvelles.length) ? `<button class="btn violet" id="mission">🃏 Mission du jour : ${dues.length ? dues.length + ' carte(s) à revoir' : 'découvrir de nouvelles cartes'}</button>` : ''}
   <div class="hopital"><div class="toit"><span>✚ HÔPITAL DES STAGES ✚</span></div>${etagesHTML}
-  <div class="rdc"><button data-go="vestiaire">🎖️ Vestiaire</button><button data-go="revision">🃏 Salle de révision</button></div></div>
-  <p class="signature">Créé par Gauthier Doumont</p>`);
+  <div class="rdc"><button data-go="jeux">🎮 Salle de jeux</button><button data-go="revision">🃏 Salle de révision</button></div></div>
+  <p class="signature">Garde de nuit v${APP_VERSION} · Créé par Gauthier Doumont</p>`);
   $$('[data-etage]').forEach(b => b.onclick = () => { son('clic'); aller('etage', { id: b.dataset.etage }); });
   $$('[data-go]').forEach(b => b.onclick = () => aller(b.dataset.go));
   if ($('#exp')) $('#exp').onclick = () => { exporter(); aller('accueil', {}, true); };
@@ -311,10 +314,10 @@ VUES.etage = ({ id }) => {
   ${monito(esc(e.accroche))}
   <div class="grille2">
     <button class="tuile" data-m="garde"><span class="ico">🌙</span><b>Gardes</b><small>${Object.keys(st.gardes || {}).length}/${e.gardes.length} jouées</small></button>
+    <button class="tuile" data-m="mini" style="border:2px solid var(--violet)"><span class="ico">🎮</span><b>Mini-jeux</b><small>${listeJeux(id).length} jeux rapides</small></button>
     <button class="tuile" data-m="quiz"><span class="ico">🏆</span><b>Quiz</b><small>${niv}/5 niveaux${st.boss ? ' · boss ✔' : ''}</small></button>
     <button class="tuile" data-m="escape"><span class="ico">🔐</span><b>Escape game</b><small>${st.escape ? 'Record : ' + fmtTemps(st.escape) : 'Trouve le code'}</small></button>
     <button class="tuile" data-m="flash"><span class="ico">🃏</span><b>Flashcards</b><small>${dues.length} à revoir · ${nouvelles.length} nouvelles</small></button>
-    <button class="tuile" data-m="mini"><span class="ico">🎮</span><b>Mini-jeux</b><small>Rapides, 1-2 min</small></button>
     <button class="tuile" data-m="fiches"><span class="ico">📖</span><b>Fiches mémo</b><small>${e.cartes.length} notions</small></button>
   </div>
   <p class="doux" style="font-size:.82rem;margin-top:14px">⚠️ Ce jeu reprend des recommandations générales. Le protocole du service et ton/ta référent(e) de stage priment toujours.</p>`);
@@ -805,9 +808,8 @@ function jouerEscape(id) {
 }
 
 /* ============================== MINI-JEUX ============================== */
-VUES.mini = ({ id }) => {
-  const e = etage(id), m = e.mini || {};
-  const jeux = [];
+function listeJeux(id) {
+  const e = etage(id), m = e.mini || {}, jeux = [];
   if ((m.situations || []).length) jeux.push(['situations', '🚑', 'Situations flash', m.situations.length + ' situations de stage']);
   if ((m.prio || []).length) jeux.push(['prio', '🚦', 'Qui en premier ?', 'Classe les patients par priorité']);
   jeux.push(['sprint', '⚡', 'Sprint 60 s', S.etages[id].sprint ? 'Record : ' + S.etages[id].sprint : 'Un max de réponses en 1 min']);
@@ -821,16 +823,33 @@ VUES.mini = ({ id }) => {
   if ((m.glasgow || []).length) jeux.push(['glasgow', '👁️', 'Glasgow express', 'Calcule Y + V + M']);
   if (m.news2) jeux.push(['news2', '🚨', 'NEWS2 express', 'Score d’alerte précoce']);
   if ((m.calculs || []).length) jeux.push(['calcul', '🧮', 'Calcul flash', 'PAM, débits, doses…']);
-  vue(`${entete('🎮 Mini-jeux — ' + esc(e.titre), true)}<div class="grille2">${jeux.map(j => `<button class="tuile" data-j="${j[0]}"><span class="ico">${j[1]}</span><b>${j[2]}</b><small>${j[3]}</small></button>`).join('')}</div>`);
-  $$('[data-j]').forEach(b => b.onclick = () => {
-    const j = b.dataset.j;
-    ({ ordre: jeuOrdre, tri: jeuTri, associe: jeuAssocie, erreur: jeuErreur, glasgow: jeuGlasgow, news2: jeuNews2, calcul: () => jeuCalcul(id), situations: jeuSituations, prio: jeuPrio, sprint: jeuSprint, memory: jeuMemory, mots: jeuMots, gds: jeuGds })[j](id);
-  });
+  return jeux;
+}
+function lancerJeu(id, j) { aller('jeu', { id, j }); }   // une entrée d'historique : « retour » ramène à la liste
+VUES.jeu = ({ id, j }) => {
+  ({ ordre: jeuOrdre, tri: jeuTri, associe: jeuAssocie, erreur: jeuErreur, glasgow: jeuGlasgow, news2: jeuNews2, calcul: () => jeuCalcul(id), situations: jeuSituations, prio: jeuPrio, sprint: jeuSprint, memory: jeuMemory, mots: jeuMots, gds: jeuGds })[j](id);
+};
+const tuileJeu = (id, j) => `<button class="tuile" data-id="${id}" data-j="${j[0]}"><span class="ico">${j[1]}</span><b>${j[2]}</b><small>${esc(j[3])}</small></button>`;
+VUES.mini = ({ id }) => {
+  const e = etage(id), jeux = listeJeux(id);
+  vue(`${entete('🎮 Mini-jeux — ' + esc(e.titre), true)}<p class="doux">${jeux.length} mini-jeux pour cet étage. Une partie dure 1 à 2 minutes.</p><div class="grille2">${jeux.map(j => tuileJeu(id, j)).join('')}</div>`);
+  $$('[data-j]').forEach(b => b.onclick = () => lancerJeu(b.dataset.id, b.dataset.j));
+};
+/* Salle de jeux : tous les mini-jeux de tous les étages, accessible depuis la barre du bas */
+VUES.jeux = ({ id: choix } = {}) => {
+  const ps = prochainStage();
+  const id = choix || (ps ? ps.e.id : ETAGES[0].id), e = etage(id);
+  vue(`${entete('🎮 Salle de jeux', false)}
+  <p class="doux">Choisis l’étage, puis le mini-jeu. Une partie dure 1 à 2 minutes.</p>
+  <div class="seg" style="justify-content:space-between">${ETAGES.map(x => `<button data-et="${x.id}" class="${x.id === id ? 'sel' : ''}" style="flex:1;font-size:.85rem">${x.emoji}<br>${esc(x.titre.replace(/^(La|Le) /, ''))}</button>`).join('')}</div>
+  <div class="grille2">${listeJeux(id).map(j => tuileJeu(id, j)).join('')}</div>`);
+  $$('[data-et]').forEach(b => b.onclick = () => aller('jeux', { id: b.dataset.et }, true));
+  $$('[data-j]').forEach(b => b.onclick = () => lancerJeu(b.dataset.id, b.dataset.j));
 };
 function finMini(id, titre, ok, total, rejouer, extra = '') {
   S.stats.miniJeux++; gagneXP(ok * 8 + 10); if (ok === total) { confettis(); son('niveau'); }
   ecranResultat(titre, `<div class="grand-emoji">${ok === total ? '🌟' : ok >= total / 2 ? '👍' : '💪'}</div><h2>${ok}/${total}</h2>${extra}`,
-    [['Rejouer', rejouer, 'violet'], ['Autres mini-jeux', () => id ? aller('mini', { id }, true) : history.back(), 'sec']]);
+    [['Rejouer', rejouer, 'violet'], ['Autres mini-jeux', () => history.back(), 'sec']]);
 }
 function jeuOrdre(id) {
   const e = etage(id), p = pick(e.mini.ordre);
@@ -1073,7 +1092,7 @@ function jeuSprint(id) {
     S.stats.miniJeux++; S.stats.reponses += ok + faux; S.stats.bonnes += ok; gagneXP(ok * 5);
     if (record && ok) { confettis(); son('niveau'); }
     ecranResultat('Sprint 60 s', `<div class="grand-emoji">⚡</div><h2>${ok} bonne(s) réponse(s)</h2><p>${faux} erreur(s)</p><p>${record && ok ? '🏆 Nouveau record !' : 'Record : ' + (st.sprint || 0)}</p>`,
-      [['Encore un sprint !', () => jeuSprint(id), 'violet'], ['Autres mini-jeux', () => aller('mini', { id }, true), 'sec']]);
+      [['Encore un sprint !', () => jeuSprint(id), 'violet'], ['Autres mini-jeux', () => history.back(), 'sec']]);
   }
   q();
   // le chrono est arrêté si on quitte la partie (vue() appelle les nettoyages à chaque écran : on le ré-enregistre)
@@ -1220,7 +1239,11 @@ function demarrer() {
   matchMedia('(prefers-color-scheme: dark)').addEventListener && matchMedia('(prefers-color-scheme: dark)').addEventListener('change', appliquerReglages);
   $$('nav.bas button').forEach(b => b.onclick = () => { son('clic'); aller(b.dataset.nav); });
   aller('accueil', {}, true);
-  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('service-worker.js').catch(() => { });
+  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+    navigator.serviceWorker.register('service-worker.js', { updateViaCache: 'none' }).then(r => r.update()).catch(() => { });
+    let recharge = false; // une nouvelle version prend la main : on recharge une fois
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (!recharge) { recharge = true; location.reload(); } });
+  }
 }
 window.GardeDeNuit = { valider, news2Score, CALCULS, version: APP_VERSION }; // utile pour les tests
 demarrer();
