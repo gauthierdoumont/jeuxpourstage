@@ -12,14 +12,16 @@
  *   version affichée sur l’accueil, mise à jour automatique de l’appli installée.
  * 1.3.0 (2026-11-01) : gardes à embranchements (suite aléatoire, fins multiples mémorisées, variation des
  *   constantes, joker café « Appeler le référent »), validation stricte des gardes ; 4 gardes de la Réa réécrites.
+ * 1.5.0 (2026-11-01) : sauvegarde v2 (migration v1→v2), étoiles 1-3 sur chaque contenu, carnet d’erreurs
+ *   (rattrapage à J+1/J+3/J+7), stats par thème et mode « Mes points faibles ».
  * 1.4.0 (2026-11-01) : Réa enrichie — 68 cartes, 122 questions (31 niveau 3), 21 situations, 4 « qui en premier ? », 15 mots.
  * ===================================================================== */
 'use strict';
 
 /* ============================== CONFIG ============================== */
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.5.0';
 const STORAGE_KEY = 'jeuxpourstage_v1';
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const INTERVALLES = [0, 1, 2, 4, 7, 14];          // jours avant révision, par boîte Leitner (1 à 5)
 const CAFES_MAX = 5;
 const RAPPEL_EXPORT_JOURS = 14;
@@ -89,12 +91,12 @@ function sourceTexte(e, s) { if (!s) return ''; return s.split('+').map(k => (e.
 /* ============================== ÉTAT ============================== */
 function etatParDefaut() {
   const et = {};
-  ETAGES.forEach(e => { et[e.id] = { niveaux: [0, 0, 0, 0, 0], boss: 0, garde: null, gardes: {}, escape: null, sprint: 0 }; });
+  ETAGES.forEach(e => { et[e.id] = { niveaux: [0, 0, 0, 0, 0], boss: 0, garde: null, gardes: {}, fins: {}, escape: null, sprint: 0 }; });
   return {
     schemaVersion: SCHEMA_VERSION, cree: dateLocale(), xp: 0, cafes: CAFES_MAX,
     serie: { n: 0, max: 0, dernier: null, jokerSemaine: null },
-    cartes: {}, etages: et, badges: {},
-    stats: { reponses: 0, bonnes: 0, meilleurCombo: 0, cartes: 0, glasgowParfaits: 0, escapes: 0, boss: 0, calculs: 0, miniJeux: 0, gardes: 0, sbarParfaits: 0, cartesDepuisCafe: 0, situations: 0, situationsJustes: 0, prioParfaites: 0, memory: 0, mots: 0, gds: 0 },
+    cartes: {}, etages: et, badges: {}, etoiles: {}, carnet: {}, themes: {},
+    stats: { reponses: 0, bonnes: 0, meilleurCombo: 0, cartes: 0, glasgowParfaits: 0, escapes: 0, boss: 0, calculs: 0, miniJeux: 0, gardes: 0, sbarParfaits: 0, cartesDepuisCafe: 0, situations: 0, situationsJustes: 0, prioParfaites: 0, memory: 0, mots: 0, gds: 0, rattrapages: 0, finsDecouvertes: 0 },
     reglages: { theme: 'auto', son: true, vibration: true, animations: true },
     dernierExport: null
   };
@@ -103,8 +105,25 @@ let S = etatParDefaut();
 let nettoyages = [];   // fonctions à appeler quand on quitte une vue (minuteurs, animations)
 
 /* ============================== STOCKAGE ============================== */
+/* Migration des sauvegardes : chaque étape ne fait qu’ajouter, rien n’est perdu */
 function migrer(d) {
-  // Exemple pour plus tard : if (d.schemaVersion === 1) { ...; d.schemaVersion = 2; }
+  if (!d || typeof d !== 'object') return d;
+  if (!d.schemaVersion || d.schemaVersion < 2) {
+    // v1 → v2 : étoiles calculées à partir des records existants, carnet et stats par thème vides
+    d.etoiles = d.etoiles || {}; d.carnet = d.carnet || {}; d.themes = d.themes || {};
+    const et = d.etages || {};
+    Object.keys(et).forEach(id => {
+      const st = et[id] || {};
+      (st.niveaux || []).forEach((b, k) => { const n = etoilesQuiz(b); if (n) d.etoiles[`niv:${id}:${k}`] = n; });
+      if (st.boss) { const n = etoilesBoss(st.boss); if (n) d.etoiles[`boss:${id}`] = n; }
+      const gs = Object.assign({}, st.gardes || {});
+      if (st.garde != null && !Object.keys(gs).length) gs.g0 = st.garde;   // v1.0 : un seul record de garde
+      Object.entries(gs).forEach(([gid, sc]) => { const n = etoilesGarde(sc); if (n) d.etoiles[`garde:${id}:${gid}`] = n; });
+      if (st.escape != null) d.etoiles[`escape:${id}`] = 1;                 // réussi (indices inconnus en v1)
+      st.fins = st.fins || {};
+    });
+    d.schemaVersion = 2;
+  }
   return d;
 }
 function fusion(base, d) {
@@ -117,7 +136,7 @@ function fusion(base, d) {
 function charger() {
   try {
     const brut = localStorage.getItem(STORAGE_KEY);
-    if (brut) S = fusion(etatParDefaut(), migrer(JSON.parse(brut)));
+    if (brut) { const d = JSON.parse(brut), v = d.schemaVersion; S = fusion(etatParDefaut(), migrer(d)); if (v !== S.schemaVersion) sauver(); }
   } catch (e) { console.warn('Lecture impossible, nouvelle partie.', e); S = etatParDefaut(); }
 }
 function sauver() {
@@ -289,12 +308,13 @@ VUES.accueil = () => {
       <span class="info"><b>${esc(e.titre)}</b><small>${esc(e.service)} · ${dateFr(e.stage.debut)} → ${dateFr(e.stage.fin)}</small>
       <span class="barre" style="margin-top:5px"><i style="width:${m}%"></i></span></span><small>${m}%</small></button>`;
   }).join('');
-  vue(`<div class="topbar"><h1>🏥 Garde de nuit</h1><div class="chips"><span class="chip">☕ ${S.cafes}</span><span class="chip">🔥 ${S.serie.n}</span></div></div>
-  <div class="carte" style="padding:10px 14px"><div style="display:flex;justify-content:space-between;align-items:center"><b>${g.ico} ${g.nom}</b><small>${S.xp} XP${g.max > g.min ? ' / ' + g.max : ''}</small></div>
+  vue(`<div class="topbar"><h1>🏥 Garde de nuit</h1><div class="chips"><span class="chip" aria-label="Étoiles">★ ${etoilesTotal().n}</span><span class="chip">☕ ${S.cafes}</span><span class="chip">🔥 ${S.serie.n}</span></div></div>
+  <div class="carte" style="padding:10px 14px"><div style="display:flex;justify-content:space-between;align-items:center"><b>${g.ico} ${g.nom}</b><small>${S.xp} XP${g.max > g.min ? ' / ' + g.max : ''} · ★ ${etoilesTotal().n}/${etoilesTotal().max}</small></div>
   <div class="barre" style="margin-top:6px"><i style="width:${pct}%"></i></div></div>
   ${monito(msg)}
   ${rappel ? `<div class="carte alerte-export">💾 Pense à <b>exporter ta sauvegarde</b> (le navigateur peut l’effacer).<button class="btn orange" id="exp">Exporter maintenant</button></div>` : ''}
   <button class="btn orange" data-go="jeux">🎮 Mini-jeux : situations flash, memory, sprint…</button>
+  ${carnetListe().length ? `<button class="btn rouge" data-go="rattrapage">🩹 Rattrapage : ${carnetDus().length} erreur(s) à revoir aujourd’hui</button>` : ''}
   ${(dues.length || nouvelles.length) ? `<button class="btn violet" id="mission">🃏 Mission du jour : ${dues.length ? dues.length + ' carte(s) à revoir' : 'découvrir de nouvelles cartes'}</button>` : ''}
   <div class="hopital"><div class="toit"><span>✚ HÔPITAL DES STAGES ✚</span></div>${etagesHTML}
   <div class="rdc"><button data-go="jeux">🎮 Salle de jeux</button><button data-go="revision">🃏 Salle de révision</button></div></div>
@@ -315,6 +335,7 @@ VUES.etage = ({ id }) => {
   <div class="carte" style="border-left:6px solid ${e.couleur}"><b>${esc(e.service)}</b><br><small>${esc(e.lieu)} · du ${dateFr(e.stage.debut)} au ${dateFr(e.stage.fin)}</small>
   <div style="display:flex;align-items:center;gap:8px;margin-top:8px"><div class="barre" style="flex:1"><i style="width:${maitrise(id)}%"></i></div><b>${maitrise(id)}%</b></div><small>Maîtrise de l’étage</small></div>
   ${monito(esc(e.accroche))}
+  <div class="carte" style="padding:10px 14px"><div class="ligne" style="border:none;padding:0"><b>★ Étoiles de l’étage</b><span>${etoilesEtage(e).n}/${etoilesEtage(e).max}</span></div></div>
   <div class="grille2">
     <button class="tuile" data-m="garde"><span class="ico">🌙</span><b>Gardes</b><small>${Object.keys(st.gardes || {}).length}/${e.gardes.length} jouées</small></button>
     <button class="tuile" data-m="mini" style="border:2px solid var(--violet)"><span class="ico">🎮</span><b>Mini-jeux</b><small>${listeJeux(id).length} jeux rapides</small></button>
@@ -322,7 +343,12 @@ VUES.etage = ({ id }) => {
     <button class="tuile" data-m="escape"><span class="ico">🔐</span><b>Escape game</b><small>${st.escape ? 'Record : ' + fmtTemps(st.escape) : 'Trouve le code'}</small></button>
     <button class="tuile" data-m="flash"><span class="ico">🃏</span><b>Flashcards</b><small>${dues.length} à revoir · ${nouvelles.length} nouvelles</small></button>
     <button class="tuile" data-m="fiches"><span class="ico">📖</span><b>Fiches mémo</b><small>${e.cartes.length} notions</small></button>
+    <button class="tuile" data-m="rattrapage"><span class="ico">🩹</span><b>Rattrapage</b><small>${carnetDus(id).length} à revoir · ${carnetListe(id).length} au carnet</small></button>
+    <button class="tuile" data-m="faibles"><span class="ico">🎯</span><b>Mes points faibles</b><small>10 questions ciblées</small></button>
   </div>
+  <details class="fiche" style="margin-top:12px"><summary>📊 Mes thèmes (taux de réussite)</summary>
+  ${statsThemes(e).map(x => `<div class="carte-fiche"><div class="ligne" style="border:none;padding:0"><span>${iconeTheme(x)} ${esc(x.nom)}</span><span>${x.n ? Math.round(x.taux * 100) + ' %' : '—'} <small>(${x.n} rép.)</small></span></div><div class="barre"><i style="width:${x.n ? Math.round(x.taux * 100) : 0}%"></i></div></div>`).join('')}
+  <p class="doux" style="font-size:.78rem">✅ ≥ 80 % · ⚠️ 50-79 % · ❌ < 50 % · ❔ moins de 5 réponses</p></details>
   <p class="doux" style="font-size:.82rem;margin-top:14px">⚠️ Ce jeu reprend des recommandations générales. Le protocole du service et ton/ta référent(e) de stage priment toujours.</p>`);
   $$('[data-m]').forEach(b => b.onclick = () => {
     son('clic'); const m = b.dataset.m;
@@ -331,6 +357,8 @@ VUES.etage = ({ id }) => {
     else if (m === 'escape') aller('escape', { id });
     else if (m === 'flash') lancerFlash([id]);
     else if (m === 'mini') aller('mini', { id });
+    else if (m === 'rattrapage') aller('rattrapage', { id });
+    else if (m === 'faibles') lancerPointsFaibles(id);
     else aller('fiches', { id });
   });
 };
@@ -378,7 +406,7 @@ function explicationHTML(e, q, juste) {
 
 /* Moteur de quiz générique : opts = { titre, questions, chrono (s/question ou 0), fin(bonnes,total) } */
 function quiz(opts) {
-  let i = 0, bonnes = 0, combo = 0, xpTotal = 0, minuteur = null;
+  let i = 0, bonnes = 0, combo = 0, xpTotal = 0, minuteur = null, jokerQuiz = false;
   const total = opts.questions.length;
   function question() {
     const q = opts.questions[i], e = etage(q.etage);
@@ -410,6 +438,8 @@ function quiz(opts) {
       if (q.t === 'vf') juste = rep !== null && (rep === '1') === !!q.b;
       else { const sel = rep || []; juste = sel.length === q.b.length && sel.every(k => q.b.includes(k)); }
       S.stats.reponses++;
+      noterTheme(q, juste);
+      if (!juste && !opts.pasDeCarnet) enregistrerErreur({ type: 'q', etage: q.etage, qid: q.id });
       if (juste) {
         bonnes++; combo++; S.stats.bonnes++; S.stats.meilleurCombo = Math.max(S.stats.meilleurCombo, combo);
         const mult = combo >= 6 ? 3 : combo >= 3 ? 2 : 1;
@@ -421,7 +451,7 @@ function quiz(opts) {
       else $$('[data-k]', m).forEach(b => { const k = +b.dataset.k; b.disabled = true; b.classList.remove('sel'); if (q.b.includes(k)) b.classList.add('ok'); else if ((rep || []).includes(k)) b.classList.add('ko'); });
       if ($('#valider')) $('#valider').remove();
       $('#fb').innerHTML = (rep === null ? '<div class="verdict ko">⏰ Temps écoulé !</div>' : '') + explicationHTML(e, q, juste) + `<button class="btn" id="suiv">${i + 1 < total ? 'Question suivante →' : 'Voir le résultat'}</button>`;
-      $('#suiv').onclick = () => { i++; if (i < total) question(); else opts.fin(bonnes, total, xpTotal); };
+      $('#suiv').onclick = () => { i++; if (i < total) question(); else opts.fin(bonnes, total, xpTotal, jokerQuiz); };
       $('#fb').scrollIntoView({ behavior: animationsOn() ? 'smooth' : 'auto', block: 'start' });
     }
     if (q.t === 'vf') $$('[data-v]', m).forEach(b => b.onclick = () => corriger(b.dataset.v));
@@ -447,9 +477,9 @@ VUES.niveaux = ({ id }) => {
   vue(`${entete('🏆 Quiz — ' + esc(e.titre), true)}
   <p class="doux">8 questions par niveau. Il faut <b>6/8</b> pour débloquer le suivant. Les combos multiplient l’XP !</p>
   ${NOMS_NIVEAUX.map((n, k) => `<button class="etage" style="--c:${e.couleur}" data-n="${k}" ${debloque(k) ? '' : 'disabled'}>
-    <span class="em">${debloque(k) ? (st.niveaux[k] >= 6 ? '⭐' : '▶️') : '🔒'}</span><span class="info"><b>Niveau ${k + 1} · ${n}</b><small>${st.niveaux[k] ? 'Meilleur score : ' + st.niveaux[k] + '/8' : debloque(k) ? 'À jouer' : 'Réussis le niveau ' + k + ' pour ouvrir'}</small></span></button>`).join('')}
+    <span class="em">${debloque(k) ? (st.niveaux[k] >= 6 ? '⭐' : '▶️') : '🔒'}</span><span class="info"><b>Niveau ${k + 1} · ${n}</b><small>${st.niveaux[k] ? 'Meilleur score : ' + st.niveaux[k] + '/8 · ' + etoilesTexte(S.etoiles[`niv:${id}:${k}`]) : debloque(k) ? 'À jouer · ★ 6/8 · ★★ 7/8 · ★★★ 8/8' : 'Réussis le niveau ' + k + ' pour ouvrir'}</small></span></button>`).join('')}
   <button class="etage" style="--c:var(--rouge)" id="boss" ${bossOuvert ? '' : 'disabled'}><span class="em">${bossOuvert ? '👹' : '🔒'}</span><span class="info"><b>BOSS : ${esc(e.boss)}</b>
-  <small>${st.boss ? 'Vaincu ! ' + st.boss + '/10' : bossOuvert ? '10 questions · 25 s chacune · 7/10 pour gagner' : 'Réussis le niveau 3 pour l’affronter'}</small></span></button>`);
+  <small>${st.boss ? 'Vaincu ! ' + st.boss + '/10 · ' + etoilesTexte(S.etoiles[`boss:${id}`]) : bossOuvert ? '10 questions · 25 s chacune · 7/10 pour gagner' : 'Réussis le niveau 3 pour l’affronter'}</small></span></button>`);
   $$('[data-n]').forEach(b => b.onclick = () => { if (debloque(+b.dataset.n)) lancerNiveau(id, +b.dataset.n); });
   $('#boss').onclick = () => { if (bossOuvert) lancerBoss(id); };
 };
@@ -462,9 +492,10 @@ function lancerNiveau(id, k) {
   const choix = shuffle(redigees.slice(0, 6).concat(autos).concat(redigees.slice(6)).slice(0, 8));
   quiz({
     titre: `Niveau ${k + 1} · ${NOMS_NIVEAUX[k]}`, questions: choix, chrono: 0,
-    fin: (b, t, xp) => {
+    fin: (b, t, xp, joker) => {
       const st = S.etages[id], dejaReussi = st.niveaux[k] >= 6;
       st.niveaux[k] = Math.max(st.niveaux[k], b);
+      donnerEtoiles(`niv:${id}:${k}`, etoilesQuiz(b), joker);
       if (b >= 6 && !dejaReussi) { gagneXP(50); confettis(); son('niveau'); }
       sauver();
       ecranResultat('Résultat', `<div class="grand-emoji">${b >= 6 ? '🎉' : '💪'}</div><h2>${b}/${t}</h2><p>${b >= 6 ? (k < 4 ? 'Niveau réussi ! Le suivant est ouvert.' : 'Tu as terminé tous les niveaux !') : 'Il faut 6/8. Réessaie, les questions changent à chaque partie.'}</p><p class="doux">+${xp + (b >= 6 && !dejaReussi ? 50 : 0)} XP</p>`,
@@ -478,8 +509,9 @@ function lancerBoss(id) {
   const qs = shuffle(dures.slice(0, 8).concat(shuffle(toutes.filter(q => !dures.slice(0, 8).includes(q))).slice(0, 10 - Math.min(8, dures.length)))).slice(0, 10);
   quiz({
     titre: '👹 ' + e.boss, questions: qs, chrono: 25,
-    fin: (b, t, xp) => {
+    fin: (b, t, xp, joker) => {
       const st = S.etages[id], deja = st.boss;
+      donnerEtoiles(`boss:${id}`, etoilesBoss(b), joker);
       if (b >= 7) { st.boss = Math.max(st.boss, b); if (!deja) { S.stats.boss++; gagneXP(150); } confettis(); son('niveau'); }
       sauver();
       ecranResultat('Boss', `<div class="grand-emoji">${b >= 7 ? '🏆' : '👹'}</div><h2>${b}/${t}</h2><p>${b >= 7 ? 'Boss vaincu ! Tu gères cet étage.' : 'Le boss résiste… Il faut 7/10. Revois les fiches et retente !'}</p><p class="doux">+${xp + (b >= 7 && !deja ? 150 : 0)} XP</p>`,
@@ -667,7 +699,7 @@ VUES.garde = ({ id, g: gi }) => {
     ${monito('Choisis ta garde. Chaque décision change la suite : il existe plusieurs fins à découvrir ! ☕ ' + S.cafes + ' café(s) en poche.')}
     ${e.gardes.map((g, k) => { const r = (st.gardes || {})[g.id], fins = finsGarde(g), vues = ((st.fins || {})[g.id] || []).filter(f => fins.includes(f)).length;
       return `<button class="etage" style="--c:${e.couleur}" data-g="${k}"><span class="em">${r != null ? (r >= 80 ? '🌅' : r >= 50 ? '🌤️' : '🌧️') : '🌙'}</span>
-      <span class="info"><b>${esc(g.titre)}</b><small>${'⭐'.repeat(g.difficulte || 2)}${r != null ? ' · record ' + r + '%' : ' · pas encore jouée'} · 🏁 ${vues}/${fins.length} fins découvertes</small></span></button>`; }).join('')}`);
+      <span class="info"><b>${esc(g.titre)}</b><small>Difficulté ${'🌶️'.repeat(g.difficulte || 2)}${r != null ? ' · record ' + r + '% · ' + etoilesTexte(S.etoiles[`garde:${id}:${g.id}`]) : ' · pas encore jouée'} · 🏁 ${vues}/${fins.length} fins</small></span></button>`; }).join('')}`);
     $$('[data-g]').forEach(b => b.onclick = () => aller('garde', { id, g: +b.dataset.g }));
     return;
   }
@@ -734,7 +766,7 @@ function jouerGarde(id, gi = 0) {
         $$('[data-k]', m).forEach(x => { x.disabled = true; if (n.choix[+x.dataset.k].q === 2) x.classList.add('ok'); });
         if ($('#joker')) $('#joker').remove();
         if (c.q < 2) b.classList.add('ko');
-        if (c.q === 0) { erreurs++; if (S.cafes > 0) { S.cafes--; toast('☕ −1 café'); } son('ko'); vibre([80, 50, 80]); enregistrerErreur && enregistrerErreur({ type: 'garde', etage: id, g: g.id, n: nid }); }
+        if (c.q === 0) { erreurs++; if (S.cafes > 0) { S.cafes--; toast('☕ −1 café'); } son('ko'); vibre([80, 50, 80]); enregistrerErreur({ type: 'g', etage: id, g: g.id, n: nid }); }
         else if (c.q === 2) { son('ok'); vibre(30); gagneXP(15); } else son('clic');
         if (c.v) v = Object.assign({}, v, c.v);
         sauver();
@@ -772,7 +804,7 @@ function jouerGarde(id, gi = 0) {
       const score = Math.min(100, Math.round(decisions * 80 + justes / 4 * 15 + bonusCafe));
       st.garde = Math.max(st.garde || 0, score); st.gardes = st.gardes || {}; st.gardes[g.id] = Math.max(st.gardes[g.id] || 0, score);
       S.stats.gardes++; gagneXP(Math.round(score * 1.5) + (nouvelle ? 20 : 0));
-      if (typeof apresGarde === 'function') apresGarde({ id, g, score, joker, issue, nouvelle });
+      apresGarde({ id, g, score, joker, issue, nouvelle });
       if (score >= 80) confettis(); son('niveau'); sauver();
       const fins = finsGarde(g);
       ecranResultat('Rapport de garde', `<div class="grand-emoji">${ICONE_ISSUE[issue]}</div><h2>Score : ${score}%</h2>
@@ -791,7 +823,6 @@ function jouerGarde(id, gi = 0) {
   }
   noeud('debut');
 }
-let enregistrerErreur = null;   // branché en phase 3 (carnet d’erreurs)
 
 /* ============================== ESCAPE GAME ============================== */
 VUES.escape = ({ id }) => {
@@ -799,13 +830,14 @@ VUES.escape = ({ id }) => {
   vue(`${entete('🔐 ' + esc(x.titre), true)}
   <div class="carte"><div class="grand-emoji">🚪</div><p>${esc(x.intro)}</p>
   <p class="doux">${x.enigmes.length} énigmes. Chaque énigme résolue te donne un chiffre du code. Mauvaise réponse = +30 s de pénalité. Un indice coûte +20 s.</p>
-  ${S.etages[id].escape ? `<p>⏱️ Ton record : <b>${fmtTemps(S.etages[id].escape)}</b></p>` : ''}</div>
+  ${S.etages[id].escape ? `<p>⏱️ Ton record : <b>${fmtTemps(S.etages[id].escape)}</b> · ${etoilesTexte(S.etoiles['escape:' + id])}</p>` : ''}
+  <p class="doux">★ réussi · ★★ sans indice · ★★★ sans indice ni erreur, en moins de 90 s par énigme.</p></div>
   <button class="btn violet" id="go">Entrer dans la salle</button>`);
   $('#go').onclick = () => jouerEscape(id);
 };
 function jouerEscape(id) {
   const e = etage(id), x = e.escape;
-  let k = 0, penalite = 0, debut = Date.now(), chiffres = [], minuteur;
+  let k = 0, penalite = 0, debut = Date.now(), chiffres = [], minuteur, indices = 0, fautes = 0;
   const temps = () => Math.floor((Date.now() - debut) / 1000) + penalite;
   function cadre(contenu) {
     const m = vue(`${entete('🔐 ' + esc(x.titre), true)}
@@ -826,8 +858,8 @@ function jouerEscape(id) {
     corps += `<button class="btn sec" id="ind">💡 Indice (+20 s)</button><div id="fb"></div>`;
     const m = cadre(corps);
     const reussi = () => { chiffres.push(en.chiffre); son('ok'); vibre(40); gagneXP(20); $('#fb').innerHTML = `<div class="verdict ok">🔓 Chiffre trouvé : ${en.chiffre}</div>${en.explication ? `<div class="bloc b-pourquoi"><b class="t">🧠 Le pourquoi</b>${esc(en.explication)}</div>` : ''}<button class="btn vert" id="suiv">Énigme suivante →</button>`; $('#suiv').onclick = () => { k++; enigme(); }; $$('button.choix,#val,#ind', m).forEach(b => b.disabled = true); };
-    const rate = el => { penalite += 30; son('ko'); vibre([60, 40, 60]); toast('❌ +30 s de pénalité'); if (el) { el.classList.add('secoue'); setTimeout(() => el.classList.remove('secoue'), 400); } };
-    $('#ind').onclick = () => { penalite += 20; $('#ind').disabled = true; $('#fb').innerHTML = `<div class="bloc b-stage"><b class="t">💡 Indice</b>${esc(en.indice)}</div>`; };
+    const rate = el => { fautes++; penalite += 30; son('ko'); vibre([60, 40, 60]); toast('❌ +30 s de pénalité'); if (el) { el.classList.add('secoue'); setTimeout(() => el.classList.remove('secoue'), 400); } };
+    $('#ind').onclick = () => { indices++; penalite += 20; $('#ind').disabled = true; $('#fb').innerHTML = `<div class="bloc b-stage"><b class="t">💡 Indice</b>${esc(en.indice)}</div>`; };
     if (en.type === 'code') {
       const norm = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
       const valider = () => { const r = norm($('#rep').value); if (en.reponses.map(norm).includes(r)) reussi(); else rate($('#rep')); };
@@ -853,10 +885,11 @@ function jouerEscape(id) {
         clearInterval(minuteur);
         const t = temps(), st = S.etages[id], premier = !st.escape;
         st.escape = st.escape ? Math.min(st.escape, t) : t; if (premier) S.stats.escapes++;
+        donnerEtoiles(`escape:${id}`, indices || fautes ? 1 : (t < 90 * x.enigmes.length ? 3 : 2), false);
         gagneXP(premier ? 120 : 40); confettis(); son('niveau'); sauver();
         ecranResultat('Évadée !', `<div class="grand-emoji">🔓</div><h2>Porte ouverte en ${fmtTemps(t)}</h2><p>${esc(x.victoire)}</p><p class="doux">Record : ${fmtTemps(st.escape)} (dont ${penalite} s de pénalités)</p>`,
           [['Rejouer (battre le record)', () => jouerEscape(id), 'violet'], ['Retour à l’étage', () => aller('etage', { id }, true), 'sec']]);
-      } else { penalite += 30; son('ko'); toast('❌ Mauvais code (+30 s)'); }
+      } else { fautes++; penalite += 30; son('ko'); toast('❌ Mauvais code (+30 s)'); }
     };
     $('#ouvrir').onclick = ouvrir; $('#code').onkeydown = ev => { if (ev.key === 'Enter') ouvrir(); };
   }
@@ -882,10 +915,12 @@ function listeJeux(id) {
   return jeux;
 }
 function lancerJeu(id, j) { aller('jeu', { id, j }); }   // une entrée d'historique : « retour » ramène à la liste
+let jeuCourant = null;
 VUES.jeu = ({ id, j }) => {
+  jeuCourant = j;
   ({ ordre: jeuOrdre, tri: jeuTri, associe: jeuAssocie, erreur: jeuErreur, glasgow: jeuGlasgow, news2: jeuNews2, calcul: () => jeuCalcul(id), situations: jeuSituations, prio: jeuPrio, sprint: jeuSprint, memory: jeuMemory, mots: jeuMots, gds: jeuGds })[j](id);
 };
-const tuileJeu = (id, j) => `<button class="tuile" data-id="${id}" data-j="${j[0]}"><span class="ico">${j[1]}</span><b>${j[2]}</b><small>${esc(j[3])}</small></button>`;
+const tuileJeu = (id, j) => `<button class="tuile" data-id="${id}" data-j="${j[0]}"><span class="ico">${j[1]}</span><b>${j[2]}</b><small>${esc(j[3])}</small>${j[0] !== 'sprint' ? `<small>${etoilesTexte(S.etoiles[`mini:${id}:${j[0]}`])}</small>` : ''}</button>`;
 VUES.mini = ({ id }) => {
   const e = etage(id), jeux = listeJeux(id);
   vue(`${entete('🎮 Mini-jeux — ' + esc(e.titre), true)}<p class="doux">${jeux.length} mini-jeux pour cet étage. Une partie dure 1 à 2 minutes.</p><div class="grille2">${jeux.map(j => tuileJeu(id, j)).join('')}</div>`);
@@ -903,6 +938,7 @@ VUES.jeux = ({ id: choix } = {}) => {
   $$('[data-j]').forEach(b => b.onclick = () => lancerJeu(b.dataset.id, b.dataset.j));
 };
 function finMini(id, titre, ok, total, rejouer, extra = '') {
+  if (id && jeuCourant) donnerEtoiles(`mini:${id}:${jeuCourant}`, etoilesPct(total ? ok / total : 0), false);
   S.stats.miniJeux++; gagneXP(ok * 8 + 10); if (ok === total) { confettis(); son('niveau'); }
   ecranResultat(titre, `<div class="grand-emoji">${ok === total ? '🌟' : ok >= total / 2 ? '👍' : '💪'}</div><h2>${ok}/${total}</h2>${extra}`,
     [['Rejouer', rejouer, 'violet'], ['Autres mini-jeux', () => history.back(), 'sec']]);
@@ -1085,6 +1121,7 @@ function jeuSituations(id) {
       $$('[data-k]', m).forEach(y => { y.disabled = true; if (x.choix[+y.dataset.k].q === 2) y.classList.add('ok'); });
       if (c.q < 2) b.classList.add('ko');
       S.stats.situations++;
+      if (c.q < 2) enregistrerErreur({ type: 's', etage: id, i: e.mini.situations.indexOf(x) });
       if (c.q === 2) { ok++; S.stats.situationsJustes++; son('ok'); vibre(30); gagneXP(12); } else { son(c.q ? 'clic' : 'ko'); if (!c.q) vibre([60, 40, 60]); sauver(); }
       $('#fb').innerHTML = `<div class="verdict ${c.q === 2 ? 'ok' : 'ko'}">${c.q === 2 ? 'Excellent réflexe ✅' : c.q === 1 ? 'Pas faux, mais pas la priorité 🟠' : 'Décision risquée ❌'}</div>
       <div class="bloc b-pourquoi"><b class="t">🧠 Le pourquoi</b>${esc(c.fb)}</div>${c !== meilleur ? `<div class="bloc b-clair"><b class="t">✅ Le meilleur choix</b>${esc(meilleur.t)} — ${esc(meilleur.fb)}</div>` : ''}
@@ -1131,6 +1168,7 @@ function jeuSprint(id) {
     ${x.t === 'vf' ? `<div class="rangee"><button class="choix centre" data-v="1">👍 Vrai</button><button class="choix centre" data-v="0">👎 Faux</button></div>` : ordre.map(j => `<button class="choix" data-k="${j}">${esc(x.c[j])}</button>`).join('')}`);
     const repondre = (juste, b) => {
       if (fini) return;
+      noterTheme(x, juste);
       if (juste) { ok++; son('ok'); } else { faux++; son('ko'); vibre(40); }
       b.classList.add(juste ? 'ok' : 'ko'); $$('button.choix', m).forEach(y => y.disabled = true);
       k++; setTimeout(q, juste ? 250 : 700);
@@ -1240,6 +1278,137 @@ function jeuGds(id) {
     });
   }
   un();
+}
+
+
+/* ============================== PROGRESSION v2 : ÉTOILES, CARNET D’ERREURS, THÈMES ============================== */
+function etoilesQuiz(b) { return b >= 8 ? 3 : b >= 7 ? 2 : b >= 6 ? 1 : 0; }
+function etoilesBoss(b) { return b >= 10 ? 3 : b >= 9 ? 2 : b >= 7 ? 1 : 0; }
+function etoilesGarde(sc) { return sc >= 95 ? 3 : sc >= 80 ? 2 : sc >= 50 ? 1 : 0; }
+function etoilesPct(p) { return p >= 1 ? 3 : p >= 0.8 ? 2 : p >= 0.6 ? 1 : 0; }
+/* Affichage accessible : symboles pleins/vides + texte « 2/3 » (jamais la couleur seule) */
+function etoilesTexte(n) { n = n || 0; return `<span aria-label="${n} étoile(s) sur 3">${'★'.repeat(n)}${'☆'.repeat(3 - n)} ${n}/3</span>`; }
+function donnerEtoiles(cle, n, avecJoker) {
+  if (avecJoker) n = Math.min(n, 2);              // un joker café plafonne à ★★
+  const avant = S.etoiles[cle] || 0;
+  if (n > avant) {
+    S.etoiles[cle] = n; S.stats.etoilesGagnees = (S.stats.etoilesGagnees || 0) + (n - avant);
+    toast('★ ' + '★'.repeat(n) + ' ' + n + '/3 — nouvelle(s) étoile(s) !', 3000); son('niveau');
+    if (typeof apresEtoiles === 'function') apresEtoiles(n - avant);
+  }
+  sauver();
+}
+function clesEtoilesEtage(e) {
+  const c = [0, 1, 2, 3, 4].map(k => `niv:${e.id}:${k}`).concat([`boss:${e.id}`, `escape:${e.id}`]);
+  e.gardes.forEach(g => c.push(`garde:${e.id}:${g.id}`));
+  listeJeux(e.id).filter(j => j[0] !== 'sprint').forEach(j => c.push(`mini:${e.id}:${j[0]}`));
+  return c;
+}
+function etoilesEtage(e) { const c = clesEtoilesEtage(e); return { n: c.reduce((t, k) => t + (S.etoiles[k] || 0), 0), max: c.length * 3 }; }
+function etoilesTotal() { return ETAGES.reduce((r, e) => { const x = etoilesEtage(e); r.n += x.n; r.max += x.max; return r; }, { n: 0, max: 0 }); }
+function apresGarde({ id, g, score, joker }) { donnerEtoiles(`garde:${id}:${g.id}`, etoilesGarde(score), joker); }
+
+/* Stats par thème */
+function noterTheme(q, juste) {
+  if (!q || !q.etage || !q.th) return;
+  const k = q.etage + ':' + q.th, t = S.themes[k] || [0, 0];
+  t[1]++; if (juste) t[0]++; S.themes[k] = t;
+}
+function statsThemes(e) {
+  return Object.keys(e.themes).map(th => { const t = S.themes[e.id + ':' + th] || [0, 0]; return { th, nom: e.themes[th], ok: t[0], n: t[1], taux: t[1] ? t[0] / t[1] : null }; });
+}
+function iconeTheme(x) { return x.n < 5 ? '❔' : x.taux >= 0.8 ? '✅' : x.taux >= 0.5 ? '⚠️' : '❌'; }
+
+/* Carnet d’erreurs : boîte 1 → J+1, boîte 2 → J+3, boîte 3 → J+7 ; 3 réussites d’affilée = sortie ; un échec = boîte 1 */
+const DELAIS_CARNET = [0, 1, 3, 7];
+function cleErreur(it) { return it.type === 'q' ? 'q:' + it.qid : it.type === 's' ? `s:${it.etage}:${it.i}` : `g:${it.etage}:${it.g}:${it.n}`; }
+function enregistrerErreur(it) {
+  if (!it || (it.type === 's' && it.i < 0)) return;
+  const k = cleErreur(it);
+  S.carnet[k] = Object.assign({}, it, { boite: 1, serie: 0, due: ajouteJours(dateLocale(), DELAIS_CARNET[1]), ajout: (S.carnet[k] || {}).ajout || dateLocale() });
+  sauver();
+}
+function carnetListe(id) { return Object.entries(S.carnet).filter(([, x]) => !id || x.etage === id).map(([k, x]) => Object.assign({ cle: k }, x)); }
+function carnetDus(id) { const auj = dateLocale(); return carnetListe(id).filter(x => x.due <= auj); }
+function resoudreErreur(it) {
+  const e = etage(it.etage); if (!e) return null;
+  if (it.type === 'q') { const q = questionsEtage(e).find(x => x.id === it.qid); return q ? { type: 'q', q } : null; }
+  if (it.type === 's') { const x = (e.mini.situations || [])[it.i]; return x ? { type: 's', x } : null; }
+  const g = e.gardes.find(y => y.id === it.g), n = g && g.noeuds[it.n];
+  if (!n || !n.choix) return null;
+  return { type: 's', x: { patient: n.patient || g.titre, v: Object.assign({}, g.noeuds.debut.v, n.v), texte: n.texte, s: n.s, choix: n.choix.map(c => ({ t: c.t, q: c.q, fb: c.fb })) } };
+}
+function noterRattrapage(it, juste, anticipe) {
+  const x = S.carnet[it.cle]; if (!x) return;
+  if (juste) {
+    S.stats.rattrapages++;
+    if (typeof apresRattrapage === 'function') apresRattrapage();
+    if (anticipe) return sauver();
+    x.serie++;
+    if (x.serie >= 3) { delete S.carnet[it.cle]; toast('🩹 Erreur maîtrisée : sortie du carnet !'); }
+    else { x.boite = Math.min(3, x.boite + 1); x.due = ajouteJours(dateLocale(), DELAIS_CARNET[x.boite]); }
+  } else { x.boite = 1; x.serie = 0; x.due = ajouteJours(dateLocale(), DELAIS_CARNET[1]); }
+  sauver();
+}
+/* Une situation (situation flash ou nœud de garde) jouée seule */
+function jouerUneSituation(e, x, titre, entete2, suite) {
+  const m = vue(`${entete(titre, true)}${entete2}
+    ${x.patient ? `<div class="chip" style="margin-bottom:6px">🛏️ ${esc(x.patient)}</div>` : ''}${x.v ? moniteurHTML(x.v) : ''}
+    <div class="carte"><p>${esc(x.texte)}</p><b>Que fais-tu ?</b></div>
+    ${shuffle(x.choix.map((c, j) => j)).map(j => `<button class="choix" data-k="${j}">${esc(x.choix[j].t)}</button>`).join('')}<div id="fb"></div>`);
+  if (x.v) animerECG(x.v.FC);
+  $$('[data-k]', m).forEach(b => b.onclick = () => {
+    const c = x.choix[+b.dataset.k], meilleur = x.choix.find(y => y.q === 2), juste = c.q === 2;
+    $$('[data-k]', m).forEach(y => { y.disabled = true; if (x.choix[+y.dataset.k].q === 2) y.classList.add('ok'); });
+    if (!juste) b.classList.add('ko');
+    son(juste ? 'ok' : 'ko'); if (juste) gagneXP(10);
+    $('#fb').innerHTML = `<div class="verdict ${juste ? 'ok' : 'ko'}">${juste ? 'Bien rattrapé ✅' : 'Encore raté ❌'}</div><div class="bloc b-pourquoi"><b class="t">🧠 Le pourquoi</b>${esc(c.fb)}</div>${!juste ? `<div class="bloc b-clair"><b class="t">✅ Le meilleur choix</b>${esc(meilleur.t)} — ${esc(meilleur.fb)}</div>` : ''}${x.stage ? `<div class="bloc b-stage"><b class="t">🩺 En stage</b>${esc(x.stage)}</div>` : ''}<div class="source">📚 ${esc(sourceTexte(e, x.s))}</div><button class="btn" id="suiv">Suivant →</button>`;
+    $('#suiv').onclick = () => suite(juste);
+    $('#fb').scrollIntoView({ behavior: animationsOn() ? 'smooth' : 'auto', block: 'start' });
+  });
+}
+VUES.rattrapage = ({ id }) => {
+  const tous = carnetListe(id), dus = carnetDus(id);
+  const parBoite = [1, 2, 3].map(b => tous.filter(x => x.boite === b).length);
+  vue(`${entete('🩹 Rattrapage' + (id ? ' — ' + esc(etage(id).titre) : ''), true)}
+  ${monito(tous.length ? `Ton carnet contient <b>${tous.length}</b> erreur(s), dont <b>${dus.length}</b> à revoir aujourd’hui. 3 réussites d’affilée et une erreur sort du carnet !` : 'Ton carnet est vide : aucune erreur à rattraper. Bravo ! 🎉')}
+  <div class="carte"><b>Boîtes</b><div class="ligne"><span>📦 Boîte 1 (revue à J+1)</span><span>${parBoite[0]}</span></div><div class="ligne"><span>📦 Boîte 2 (J+3)</span><span>${parBoite[1]}</span></div><div class="ligne"><span>📦 Boîte 3 (J+7)</span><span>${parBoite[2]}</span></div></div>
+  ${dus.length ? `<button class="btn violet" id="go">Rattraper ${Math.min(10, dus.length)} erreur(s)</button>` : ''}
+  ${tous.length ? `<button class="btn sec" id="libre">S’entraîner sur tout le carnet (sans changer les boîtes)</button>` : ''}`);
+  if ($('#go')) $('#go').onclick = () => sessionRattrapage(shuffle(dus).slice(0, 10), false, id);
+  if ($('#libre')) $('#libre').onclick = () => sessionRattrapage(shuffle(tous).slice(0, 10), true, id);
+};
+function sessionRattrapage(items, anticipe, id) {
+  let k = 0, ok = 0;
+  const valides = items.filter(it => resoudreErreur(it));
+  items.filter(it => !resoudreErreur(it)).forEach(it => delete S.carnet[it.cle]);   // contenu disparu : on nettoie
+  if (!valides.length) return aller('rattrapage', { id }, true);
+  function un() {
+    if (k >= valides.length) {
+      sauver(); if (!Object.keys(S.carnet).length && typeof apresCarnetVide === 'function') apresCarnetVide();
+      return ecranResultat('Rattrapage', `<div class="grand-emoji">🩹</div><h2>${ok}/${valides.length} rattrapée(s)</h2><p class="doux">${anticipe ? 'Mode entraînement : les boîtes n’ont pas changé.' : 'Les erreurs réussies avancent de boîte ; les autres reviennent demain.'}</p>`,
+        [['Encore', () => aller('rattrapage', { id }, true), 'violet'], ['Retour', () => history.back(), 'sec']]);
+    }
+    const it = valides[k], r = resoudreErreur(it), e = etage(it.etage);
+    const bandeau = `<div class="progression"><span>🩹 ${k + 1}/${valides.length}</span><span>📦 Boîte ${it.boite} · ${it.serie}/3 réussites</span></div>`;
+    const suite = juste => { if (juste) ok++; noterRattrapage(it, juste, anticipe); k++; un(); };
+    if (r.type === 'q') quiz({ titre: '🩹 Rattrapage', questions: [r.q], chrono: 0, pasDeCarnet: true, fin: b => suite(b === 1) });
+    else jouerUneSituation(e, r.x, '🩹 Rattrapage', bandeau, suite);
+  }
+  un();
+}
+/* Points faibles : 10 questions des 3 thèmes les plus faibles (≥ 5 réponses), sinon les moins vus */
+function lancerPointsFaibles(id) {
+  const e = etage(id), st = statsThemes(e);
+  const avecDonnees = st.filter(x => x.n >= 5).sort((a, b) => a.taux - b.taux);
+  let cibles = avecDonnees.slice(0, 3).map(x => x.th);
+  if (cibles.length < 3) cibles = cibles.concat(st.filter(x => !cibles.includes(x.th)).sort((a, b) => a.n - b.n).slice(0, 3 - cibles.length).map(x => x.th));
+  const pool = shuffle(questionsEtage(e).filter(q => cibles.includes(q.th)));
+  const qs = shuffle(pool.filter(q => !q.auto)).slice(0, 7).concat(shuffle(pool.filter(q => q.auto)));
+  const choix = shuffle(qs.slice(0, 10));
+  quiz({ titre: '🎯 Points faibles', questions: choix, chrono: 0,
+    fin: (b, t, xp) => ecranResultat('Points faibles', `<div class="grand-emoji">🎯</div><h2>${b}/${t}</h2><p>Thèmes travaillés : ${cibles.map(th => esc(e.themes[th])).join(', ')}</p><p class="doux">+${xp} XP · Tes statistiques par thème sont à jour sur l’écran de l’étage.</p>`,
+      [['Encore 10 questions', () => lancerPointsFaibles(id), 'violet'], ['Retour à l’étage', () => aller('etage', { id }, true), 'sec']]) });
 }
 
 /* ============================== FUSION DES SCÉNARIOS SUPPLÉMENTAIRES ==============================

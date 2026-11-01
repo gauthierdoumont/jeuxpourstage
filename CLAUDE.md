@@ -246,9 +246,9 @@ Valider au chargement que chaque `suite` pointe vers un nœud existant et que ch
 
 ---
 
-## 8. État actuel (v1.4.0, 01/11/2026)
+## 8. État actuel (v1.5.0, 01/11/2026)
 
-> Mission v2.0.0 en cours (phases 1 à 7). Phases 1-2 terminées : moteur des gardes à embranchements, 4 gardes de la Réa réécrites, contenu de la Réa à l'objectif (68 cartes, 122 questions dont 31 de niveau 3, 21 situations, 4 « qui en premier ? », 15 mots). Les gardes des autres étages seront réécrites en phase 6 (d'ici là, `valider()` les signale).
+> Mission v2.0.0 en cours (phases 1 à 7). Phases 1-3 terminées (phase 3 : sauvegarde v2, étoiles, carnet d'erreurs, points faibles) : moteur des gardes à embranchements, 4 gardes de la Réa réécrites, contenu de la Réa à l'objectif (68 cartes, 122 questions dont 31 de niveau 3, 21 situations, 4 « qui en premier ? », 15 mots). Les gardes des autres étages seront réécrites en phase 6 (d'ici là, `valider()` les signale).
 
 Le jeu complet est en place et testé (Chromium 360 px, aucune erreur console, toutes les gardes et tous les mini-jeux joués jusqu'au bout, progression conservée au rechargement).
 
@@ -274,6 +274,9 @@ Format des scénarios supplémentaires (`window.SCENARIOS[idEtage]`) :
   prio: [{ titre, intro, s, patients: [[libellé, explication], …] }],   // dans l'ordre de priorité attendu
   mots: [[MOT, indice, explication]], ordre, tri, associe, erreur, glasgow }  // mêmes formats que les fichiers de base
 ```
+**Sauvegarde v2** (`SCHEMA_VERSION = 2`) : `migrer()` v1→v2 calcule les étoiles depuis les records (niveaux, boss, gardes, escape) sans rien supprimer, puis la sauvegarde est réécrite. Nouveaux champs : `etoiles` (clés `niv:<étage>:<0-4>`, `boss:<étage>`, `garde:<étage>:<gardeId>`, `escape:<étage>`, `mini:<étage>:<jeu>` → 1-3), `carnet` (clés `q:<questionId>`, `s:<étage>:<indexSituation>`, `g:<étage>:<gardeId>:<nœud>` → `{ type, boite 1-3, serie, due }`), `themes` (`<étage>:<thème>` → `[bonnes, total]`).
+Seuils d'étoiles : niveau 6/7/8 sur 8 · boss 7/9/10 · garde 50/80/95 % · escape réussi / sans indice / sans indice ni erreur et < 90 s par énigme · mini-jeu 60/80/100 %. Un joker café plafonne à ★★. Carnet : boîte 1 → J+1, 2 → J+3, 3 → J+7, 3 réussites d'affilée = sortie, échec = boîte 1. Les identifiants de questions (`<étage>-q<index>`) et de situations (index) servent de clés : ne jamais réordonner.
+
 **Gardes v2 (obligatoire)** : `varier: { FC, PAS, SpO2, FR, T }` (décalage tiré à chaque partie, appliqué à l'affichage, jamais sur une valeur 0) ; chaque choix a un `v` (q=2 améliore/stabilise, q=1 stagne, q=0 dégrade) ; `suite` = chaîne ou tableau (tirage au hasard → imprévus, nœud avec `evenement: true`) ; chaque nœud a un `indice` (joker « ☕ Appeler le référent ») ; après chaque q=0, un nœud de complication (texte « ⚠️ Complication ») avec un rattrapage ; fins `{ fin: true, issue: 'bonne'|'moyenne'|'mauvaise', titre, texte }`, au moins 2 dont une mauvaise ; ≥ 2 nœuds qui bifurquent ; graphe sans boucle. Les textes restent qualitatifs pour les constantes affichées (pas de chiffres de PA/FC/SpO₂ qui contrediraient le moniteur). Fins découvertes : `S.etages[id].fins[gardeId]`.
 
 `v.FC = 0` affiche un tracé de fibrillation (arrêt cardiaque). Avec `GCSlabel: 'RASS'`, la case GCS du moniteur affiche le RASS.
