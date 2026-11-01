@@ -12,6 +12,9 @@
  *   version affichée sur l’accueil, mise à jour automatique de l’appli installée.
  * 1.3.0 (2026-11-01) : gardes à embranchements (suite aléatoire, fins multiples mémorisées, variation des
  *   constantes, joker café « Appeler le référent »), validation stricte des gardes ; 4 gardes de la Réa réécrites.
+ * 1.6.0 (2026-11-01) : missions du jour (graine = date), coffre, défi de la semaine, 10 récompenses par paliers
+ *   d’étoiles (accessoires de Monito, couleurs, titres, Garde de la mort, Nuit blanche), jokers 50/50 et
+ *   indice d’escape, Monito contextuel, 6 nouveaux badges.
  * 1.5.0 (2026-11-01) : sauvegarde v2 (migration v1→v2), étoiles 1-3 sur chaque contenu, carnet d’erreurs
  *   (rattrapage à J+1/J+3/J+7), stats par thème et mode « Mes points faibles ».
  * 1.4.0 (2026-11-01) : Réa enrichie — 68 cartes, 122 questions (31 niveau 3), 21 situations, 4 « qui en premier ? », 15 mots.
@@ -19,7 +22,7 @@
 'use strict';
 
 /* ============================== CONFIG ============================== */
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.6.0';
 const STORAGE_KEY = 'jeuxpourstage_v1';
 const SCHEMA_VERSION = 2;
 const INTERVALLES = [0, 1, 2, 4, 7, 14];          // jours avant révision, par boîte Leitner (1 à 5)
@@ -58,6 +61,12 @@ const BADGES = [
   ['mots', '🔤', 'Dico vivant', '30 mots mystères trouvés', s => s.stats.mots >= 30],
   ['gds', '🩸', 'Gazométriste', '30 gaz du sang justes', s => s.stats.gds >= 30],
   ['gardes', '🌃', 'Toutes les nuits', 'Jouer toutes les gardes d’un étage', s => ETAGES.some(e => e.gardes.every(g => ((s.etages[e.id] || {}).gardes || {})[g.id] != null))],
+  ['toutesfins', '🗺️', 'Exploratrice', 'Découvrir toutes les fins d’une garde', s => ETAGES.some(e => e.gardes.some(g => finsGarde(g).every(f => (((s.etages[e.id] || {}).fins || {})[g.id] || []).includes(f))))],
+  ['carnetvide', '🧹', 'Carnet vide', 'Vider complètement son carnet d’erreurs', s => !!s.stats.carnetVide],
+  ['ratt50', '🩹', 'Reine du rattrapage', '50 erreurs rattrapées', s => s.stats.rattrapages >= 50],
+  ['trois10', '🌟', 'Perfectionniste', '10 contenus à ★★★', s => Object.values(s.etoiles || {}).filter(n => n === 3).length >= 10],
+  ['missions7', '📆', 'Assidue', 'Missions du jour remplies 7 jours d’affilée', s => (s.missionsSerie || {}).max >= 7],
+  ['examen80', '🎓', 'Examen blanc réussi', '80 % ou plus à un examen blanc', s => !!s.stats.examen80],
   ['maitrise', '🎓', 'Prête pour le stage', 'Un étage maîtrisé à 80 %', s => ETAGES.some(e => maitrise(e.id) >= 80)]
 ];
 
@@ -96,6 +105,8 @@ function etatParDefaut() {
     schemaVersion: SCHEMA_VERSION, cree: dateLocale(), xp: 0, cafes: CAFES_MAX,
     serie: { n: 0, max: 0, dernier: null, jokerSemaine: null },
     cartes: {}, etages: et, badges: {}, etoiles: {}, carnet: {}, themes: {},
+    jour: null, semaine: null, minisJoues: {}, missionsSerie: { n: 0, max: 0, dernier: null }, derniereVisite: null, absence: 0,
+    apparence: { accessoire: null, palette: 'defaut', titre: null },
     stats: { reponses: 0, bonnes: 0, meilleurCombo: 0, cartes: 0, glasgowParfaits: 0, escapes: 0, boss: 0, calculs: 0, miniJeux: 0, gardes: 0, sbarParfaits: 0, cartesDepuisCafe: 0, situations: 0, situationsJustes: 0, prioParfaites: 0, memory: 0, mots: 0, gds: 0, rattrapages: 0, finsDecouvertes: 0 },
     reglages: { theme: 'auto', son: true, vibration: true, animations: true },
     dernierExport: null
@@ -256,6 +267,8 @@ function appliquerReglages() {
   const r = document.documentElement;
   if (S.reglages.theme === 'auto') r.removeAttribute('data-theme'); else r.setAttribute('data-theme', S.reglages.theme);
   r.setAttribute('data-anim', S.reglages.animations ? 'on' : 'off');
+  const pal = S.apparence && S.apparence.palette;
+  if (pal && pal !== 'defaut' && recompenseDebloquee('pal-' + pal)) r.setAttribute('data-palette', pal); else r.removeAttribute('data-palette');
 }
 function entete(titre, retour) {
   return `<div class="topbar">${retour ? `<button class="btn-retour" data-retour aria-label="Retour">←</button>` : ''}<h1>${titre}</h1>
@@ -269,10 +282,20 @@ function vue(html) {
 }
 function monitoSVG(humeur = 'content') {
   const bouche = humeur === 'triste' ? 'M22 44 Q32 38 42 44' : 'M22 40 Q32 48 42 40';
-  return `<svg viewBox="0 0 64 64" aria-hidden="true"><rect x="4" y="6" width="56" height="44" rx="10" fill="#2E86AB"/><rect x="9" y="11" width="46" height="34" rx="6" fill="#071016"/>
+  return `<svg viewBox="0 -4 64 68" aria-hidden="true"><rect x="4" y="6" width="56" height="44" rx="10" fill="#2E86AB"/><rect x="9" y="11" width="46" height="34" rx="6" fill="#071016"/>
   <polyline points="11,30 20,30 24,22 28,38 32,26 35,30 53,30" fill="none" stroke="#4BE07A" stroke-width="2"/>
   <circle cx="24" cy="20" r="2.6" fill="#fff"/><circle cx="40" cy="20" r="2.6" fill="#fff"/><path d="${bouche}" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round"/>
-  <rect x="26" y="50" width="12" height="6" fill="#2E86AB"/><rect x="18" y="55" width="28" height="5" rx="2.5" fill="#2E86AB"/></svg>`;
+  <rect x="26" y="50" width="12" height="6" fill="#2E86AB"/><rect x="18" y="55" width="28" height="5" rx="2.5" fill="#2E86AB"/>${accessoireSVG()}</svg>`;
+}
+function accessoireSVG() {
+  const a = S.apparence && S.apparence.accessoire;
+  if (!a || !recompenseDebloquee('acc-' + a)) return '';
+  return ({
+    stetho: '<path d="M8 40 Q2 52 14 58 Q24 60 26 52" fill="none" stroke="#E15554" stroke-width="2.4"/><circle cx="26" cy="51" r="3" fill="#B0BEC5" stroke="#455A64"/>',
+    calot: '<path d="M10 9 Q32 -6 54 9 L54 12 L10 12 Z" fill="#3BB273"/><rect x="10" y="10" width="44" height="3" fill="#2E7D52"/>',
+    lunettes: '<g fill="none" stroke="#F18F01" stroke-width="2"><circle cx="24" cy="20" r="5"/><circle cx="40" cy="20" r="5"/><path d="M29 20 H35"/></g>',
+    couronne: '<path d="M14 9 L20 0 L26 7 L32 -2 L38 7 L44 0 L50 9 Z" fill="#F7C948" stroke="#B8860B" stroke-width="1"/>'
+  })[a] || '';
 }
 function monito(txt, humeur) { return `<div class="monito">${monitoSVG(humeur)}<div class="bulle">${txt}</div></div>`; }
 
@@ -294,9 +317,7 @@ window.addEventListener('popstate', e => afficher(e.state || { nom: 'accueil' })
 VUES.accueil = () => {
   const g = grade(), ps = prochainStage();
   const pct = g.max > g.min ? Math.round((S.xp - g.min) / (g.max - g.min) * 100) : 100;
-  let msg = pick(MESSAGES_MONITO);
-  if (ps && ps.enCours) msg = `Tu es en stage <b>${esc(ps.e.titre)}</b> ! Encore ${ps.j} jour(s). Courage, je révise avec toi 💪`;
-  else if (ps && ps.j <= 14) msg = `Ton stage <b>${esc(ps.e.titre)}</b> commence dans <b>${ps.j} jour(s)</b> ! On s’échauffe à l’étage ${ps.e.num} ?`;
+  const msg = messageMonito(ps) || pick(MESSAGES_MONITO);
   const { dues, nouvelles } = cartesDues();
   const rappel = (S.xp > 0 && (S.dernierExport ? jours(S.dernierExport, dateLocale()) >= RAPPEL_EXPORT_JOURS : jours(S.cree, dateLocale()) >= RAPPEL_EXPORT_JOURS));
   const etagesHTML = ETAGES.slice().reverse().map(e => {
@@ -309,13 +330,14 @@ VUES.accueil = () => {
       <span class="barre" style="margin-top:5px"><i style="width:${m}%"></i></span></span><small>${m}%</small></button>`;
   }).join('');
   vue(`<div class="topbar"><h1>🏥 Garde de nuit</h1><div class="chips"><span class="chip" aria-label="Étoiles">★ ${etoilesTotal().n}</span><span class="chip">☕ ${S.cafes}</span><span class="chip">🔥 ${S.serie.n}</span></div></div>
-  <div class="carte" style="padding:10px 14px"><div style="display:flex;justify-content:space-between;align-items:center"><b>${g.ico} ${g.nom}</b><small>${S.xp} XP${g.max > g.min ? ' / ' + g.max : ''} · ★ ${etoilesTotal().n}/${etoilesTotal().max}</small></div>
+  <div class="carte" style="padding:10px 14px"><div style="display:flex;justify-content:space-between;align-items:center"><b>${g.ico} ${g.nom}${titreActuel() ? ' · « ' + titreActuel() + ' »' : ''}</b><small>${S.xp} XP${g.max > g.min ? ' / ' + g.max : ''} · ★ ${etoilesTotal().n}/${etoilesTotal().max}</small></div>
   <div class="barre" style="margin-top:6px"><i style="width:${pct}%"></i></div></div>
   ${monito(msg)}
+  ${missionsHTML()}
   ${rappel ? `<div class="carte alerte-export">💾 Pense à <b>exporter ta sauvegarde</b> (le navigateur peut l’effacer).<button class="btn orange" id="exp">Exporter maintenant</button></div>` : ''}
   <button class="btn orange" data-go="jeux">🎮 Mini-jeux : situations flash, memory, sprint…</button>
   ${carnetListe().length ? `<button class="btn rouge" data-go="rattrapage">🩹 Rattrapage : ${carnetDus().length} erreur(s) à revoir aujourd’hui</button>` : ''}
-  ${(dues.length || nouvelles.length) ? `<button class="btn violet" id="mission">🃏 Mission du jour : ${dues.length ? dues.length + ' carte(s) à revoir' : 'découvrir de nouvelles cartes'}</button>` : ''}
+  ${(dues.length || nouvelles.length) ? `<button class="btn violet" id="mission">🃏 Flashcards : ${dues.length ? dues.length + ' carte(s) à revoir' : 'découvrir de nouvelles cartes'}</button>` : ''}
   <div class="hopital"><div class="toit"><span>✚ HÔPITAL DES STAGES ✚</span></div>${etagesHTML}
   <div class="rdc"><button data-go="jeux">🎮 Salle de jeux</button><button data-go="revision">🃏 Salle de révision</button></div></div>
   <p class="signature">Garde de nuit v${APP_VERSION} · Créé par Gauthier Doumont</p>`);
@@ -323,6 +345,8 @@ VUES.accueil = () => {
   $$('[data-go]').forEach(b => b.onclick = () => aller(b.dataset.go));
   if ($('#exp')) $('#exp').onclick = () => { exporter(); aller('accueil', {}, true); };
   if ($('#mission')) $('#mission').onclick = () => lancerFlash(null);
+  $$('[data-mission]').forEach(b => b.onclick = () => { const m = missionsDuJour().missions[+b.dataset.mission]; if (m.type === 'flash') lancerFlash(null); else aller(m.aller[0], m.aller[1]); });
+  if ($('#coffre')) $('#coffre').onclick = ouvrirCoffre;
 };
 
 /* ============================== VUE : ÉTAGE ============================== */
@@ -420,7 +444,13 @@ function quiz(opts) {
       <div id="rep">${q.t === 'vf'
         ? `<div class="rangee"><button class="choix centre" data-v="1">👍 Vrai</button><button class="choix centre" data-v="0">👎 Faux</button></div>`
         : ordre.map(k => `<button class="choix" data-k="${k}">${esc(q.c[k])}</button>`).join('') + (multi ? `<button class="btn" id="valider">Valider</button>` : '')}</div>
+      ${q.t === 'qcm' && !multi && q.c.length >= 4 && !opts.sansJoker ? `<button class="btn sec" id="j5050" ${S.cafes > 0 ? '' : 'disabled'}>☕ 50/50 ${S.cafes > 0 ? '(−1 café)' : '(plus de café)'}</button>` : ''}
       <div id="fb"></div>`);
+    if ($('#j5050')) $('#j5050').onclick = () => {
+      if (S.cafes <= 0) return; S.cafes--; jokerQuiz = true; sauver(); son('clic');
+      shuffle(q.c.map((_, k) => k).filter(k => !q.b.includes(k))).slice(0, 2).forEach(k => { const b = $(`[data-k="${k}"]`, m); if (b) { b.disabled = true; b.style.opacity = '.3'; b.setAttribute('aria-label', 'Option écartée'); } });
+      $('#j5050').remove(); toast('☕ Deux mauvaises réponses écartées (étoiles max ★★)');
+    };
     const debut = Date.now();
     let fini = false;
     if (opts.chrono) {
@@ -449,7 +479,7 @@ function quiz(opts) {
       // marquer les réponses
       if (q.t === 'vf') $$('[data-v]', m).forEach(b => { b.disabled = true; if ((b.dataset.v === '1') === !!q.b) b.classList.add('ok'); else if (b.dataset.v === rep) b.classList.add('ko'); });
       else $$('[data-k]', m).forEach(b => { const k = +b.dataset.k; b.disabled = true; b.classList.remove('sel'); if (q.b.includes(k)) b.classList.add('ok'); else if ((rep || []).includes(k)) b.classList.add('ko'); });
-      if ($('#valider')) $('#valider').remove();
+      if ($('#valider')) $('#valider').remove(); if ($('#j5050')) $('#j5050').remove();
       $('#fb').innerHTML = (rep === null ? '<div class="verdict ko">⏰ Temps écoulé !</div>' : '') + explicationHTML(e, q, juste) + `<button class="btn" id="suiv">${i + 1 < total ? 'Question suivante →' : 'Voir le résultat'}</button>`;
       $('#suiv').onclick = () => { i++; if (i < total) question(); else opts.fin(bonnes, total, xpTotal, jokerQuiz); };
       $('#fb').scrollIntoView({ behavior: animationsOn() ? 'smooth' : 'auto', block: 'start' });
@@ -495,7 +525,7 @@ function lancerNiveau(id, k) {
     fin: (b, t, xp, joker) => {
       const st = S.etages[id], dejaReussi = st.niveaux[k] >= 6;
       st.niveaux[k] = Math.max(st.niveaux[k], b);
-      donnerEtoiles(`niv:${id}:${k}`, etoilesQuiz(b), joker);
+      donnerEtoiles(`niv:${id}:${k}`, etoilesQuiz(b), joker); evenement('niveau', { id, b });
       if (b >= 6 && !dejaReussi) { gagneXP(50); confettis(); son('niveau'); }
       sauver();
       ecranResultat('Résultat', `<div class="grand-emoji">${b >= 6 ? '🎉' : '💪'}</div><h2>${b}/${t}</h2><p>${b >= 6 ? (k < 4 ? 'Niveau réussi ! Le suivant est ouvert.' : 'Tu as terminé tous les niveaux !') : 'Il faut 6/8. Réessaie, les questions changent à chaque partie.'}</p><p class="doux">+${xp + (b >= 6 && !dejaReussi ? 50 : 0)} XP</p>`,
@@ -523,7 +553,8 @@ function lancerBoss(id) {
 /* ============================== FLASHCARDS (LEITNER) ============================== */
 function lancerFlash(ids) {
   let { dues, nouvelles } = cartesDues(ids);
-  let paquet = shuffle(dues).slice(0, 20).concat(shuffle(nouvelles).slice(0, 8));
+  const aRevoir = shuffle(dues).slice(0, 20);
+  let paquet = aRevoir.concat(shuffle(nouvelles).slice(0, Math.max(8, 15 - aRevoir.length)));   // ≥ 15 cartes si possible (mission du jour)
   let libre = false;
   if (!paquet.length) {
     const toutes = ETAGES.filter(e => !ids || ids.includes(e.id)).flatMap(cartesEtage);
@@ -557,7 +588,7 @@ function flashSession(paquet, libre, ids) {
         S.cartes[c.id] = { boite: b, due: ajouteJours(dateLocale(), INTERVALLES[b]) };
       }
       if (r === 2) sues++;
-      S.stats.cartes++; S.stats.cartesDepuisCafe++;
+      S.stats.cartes++; S.stats.cartesDepuisCafe++; evenement('carte', {});
       if (S.stats.cartesDepuisCafe >= 10) { S.stats.cartesDepuisCafe = 0; if (S.cafes < CAFES_MAX) { S.cafes++; toast('☕ +1 café rechargé grâce aux flashcards !'); } }
       gagneXP(r === 2 ? 5 : 2);
       i++; if (i < paquet.length) carte(); else fin();
@@ -596,6 +627,13 @@ VUES.vestiaire = () => {
   <div class="cafes">${'☕'.repeat(S.cafes)}${'▫️'.repeat(CAFES_MAX - S.cafes)}</div><small>Les cafés se perdent sur une erreur grave en garde et se rechargent avec les flashcards (10 cartes = 1 café).</small></div>
   <div class="carte"><b>Grades</b>${GRADES.map(x => `<div class="ligne"><span>${x[2]} ${x[1]}</span><span>${S.xp >= x[0] ? '✅' : x[0] + ' XP'}</span></div>`).join('')}</div>
   <div class="carte"><b>Maîtrise par étage</b>${ETAGES.map(e => `<div class="ligne"><span>${e.emoji} ${esc(e.titre)}</span><span>${maitrise(e.id)}%</span></div>`).join('')}</div>
+  <div class="carte"><b>🎁 Récompenses (★ ${etoilesTotal().n}/${etoilesTotal().max})</b><p class="doux" style="font-size:.8rem">Elles se débloquent avec les étoiles. Rien ne se dépense.</p>
+  ${RECOMPENSES.map(r => { const ok = etoilesTotal().n >= seuilRecompense(r[0]); return `<div class="ligne"><span>${ok ? '✅' : '🔒'} ${esc(r[2])}</span><span>★ ${seuilRecompense(r[0])}</span></div>`; }).join('')}</div>
+  <div class="carte"><b>👗 Apparence</b>
+  <label class="switch"><span>Accessoire de Monito</span><select id="acc"><option value="">Aucun</option>${['stetho:Stéthoscope', 'calot:Calot', 'lunettes:Lunettes', 'couronne:Couronne'].map(x => x.split(':')).filter(([k]) => recompenseDebloquee('acc-' + k)).map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select></label>
+  <label class="switch"><span>Couleurs</span><select id="pal"><option value="defaut">Bleu soin</option>${['menthe:Menthe', 'violet:Nuit violette', 'corail:Corail'].map(x => x.split(':')).filter(([k]) => recompenseDebloquee('pal-' + k)).map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select></label>
+  <label class="switch"><span>Titre</span><select id="tit"><option value="">Aucun</option>${recompenseDebloquee('titre-lynx') ? '<option value="lynx">Œil de lynx</option>' : ''}${recompenseDebloquee('acc-couronne') ? '<option value="legende">Légende des étages</option>' : ''}</select></label>
+  <div class="centre" style="width:96px;height:96px;margin:8px auto">${monitoSVG()}</div></div>
   <h2>Badges (${Object.keys(S.badges).length}/${BADGES.length})</h2>
   <div class="grille3">${BADGES.map(([id, ico, nom, desc]) => `<div class="badge ${S.badges[id] ? '' : 'off'}" title="${esc(desc)}"><span class="ico">${ico}</span><b>${esc(nom)}</b><small>${esc(desc)}</small></div>`).join('')}</div>
   <div class="carte"><b>Statistiques</b>
@@ -604,7 +642,13 @@ VUES.vestiaire = () => {
   <div class="ligne"><span>Flashcards révisées</span><span>${st.cartes}</span></div>
   <div class="ligne"><span>Gardes terminées</span><span>${st.gardes}</span></div>
   <div class="ligne"><span>Escape games réussis</span><span>${st.escapes}</span></div>
-  <div class="ligne"><span>Mini-jeux</span><span>${st.miniJeux}</span></div></div>`);
+  <div class="ligne"><span>Mini-jeux</span><span>${st.miniJeux}</span></div>
+  <div class="ligne"><span>Erreurs rattrapées</span><span>${st.rattrapages}</span></div>
+  <div class="ligne"><span>Série de missions</span><span>${S.missionsSerie.n} j (record ${S.missionsSerie.max})</span></div></div>`);
+  $('#acc').value = S.apparence.accessoire || ''; $('#pal').value = S.apparence.palette || 'defaut'; $('#tit').value = S.apparence.titre || '';
+  $('#acc').onchange = ev => { S.apparence.accessoire = ev.target.value || null; sauver(); aller('vestiaire', {}, true); };
+  $('#pal').onchange = ev => { S.apparence.palette = ev.target.value; sauver(); appliquerReglages(); };
+  $('#tit').onchange = ev => { S.apparence.titre = ev.target.value || null; sauver(); };
 };
 
 /* ============================== VUE : RÉGLAGES / À PROPOS ============================== */
@@ -710,8 +754,9 @@ VUES.garde = ({ id, g: gi }) => {
   <p>Besoin d’aide ? Le bouton <b>☕ Appeler le référent</b> donne un indice contre 1 café.</p>
   <p>Tu as <span class="cafes">${'☕'.repeat(S.cafes) || '0 café'}</span>${S.cafes === 0 ? ' — pas de joker possible : révise 10 flashcards pour recharger un café. Tu peux quand même jouer !' : ''}</p>
   <p class="doux">🏁 ${((st.fins || {})[g.id] || []).length}/${finsGarde(g).length} fins découvertes.${rec != null ? ' Ton record : ' + rec + '%.' : ''}</p></div>
+  ${recompenseDebloquee('blanche') ? '<label class="switch carte"><span>🌑 Mode Nuit blanche (constantes plus variables, sans joker)</span><input type="checkbox" id="blanche" style="width:24px;height:24px"></label>' : ''}
   <button class="btn violet" id="go">Prendre la garde</button>`);
-  $('#go').onclick = () => jouerGarde(id, gi);
+  $('#go').onclick = () => jouerGarde(id, gi, { blanche: !!($('#blanche') && $('#blanche').checked) });
 };
 /* Constantes : bornes d’affichage et variation tirée au début de chaque partie (garde.varier) */
 const BORNES = { FC: [30, 180], PAS: [50, 230], PAD: [25, 130], SpO2: [60, 100], FR: [4, 45], T: [34, 41.5] };
@@ -733,9 +778,10 @@ function appliquerDecalage(v, d) {
   return r;
 }
 const suiteDe = c => Array.isArray(c.suite) ? pick(c.suite) : c.suite;
-function jouerGarde(id, gi = 0) {
+function jouerGarde(id, gi = 0, mode = {}) {
   const e = etage(id), g = e.gardes[gi];
-  const decalage = tirerDecalage(g.varier);
+  const varier = Object.assign({}, g.varier); if (mode.blanche) Object.keys(varier).forEach(k => varier[k] *= 2);
+  const decalage = tirerDecalage(varier);
   let points = 0, max = 0, erreurs = 0, joker = false, v = Object.assign({}, g.noeuds.debut.v || {});
   function noeud(nid) {
     const n = g.noeuds[nid];
@@ -751,9 +797,9 @@ function jouerGarde(id, gi = 0) {
         <div class="carte">${n.heure ? `<small class="doux">🕑 ${esc(n.heure)}</small>` : ''}<p>${esc(n.texte)}</p></div>
         <div id="aide"></div>
         <div id="ch">${shuffle(visibles).map(k => `<button class="choix" data-k="${k}">${esc(n.choix[k].t)}</button>`).join('')}</div>
-        <button class="btn sec" id="joker" ${S.cafes > 0 ? '' : 'disabled'}>☕ Appeler le référent ${S.cafes > 0 ? '(−1 café)' : '(plus de café)'}</button><div id="fb"></div>`);
+        ${mode.blanche ? '<p class="doux centre">🌑 Nuit blanche : pas de joker</p>' : `<button class="btn sec" id="joker" ${S.cafes > 0 ? '' : 'disabled'}>☕ Appeler le référent ${S.cafes > 0 ? '(−1 café)' : '(plus de café)'}</button>`}<div id="fb"></div>`);
       animerECG(v.FC);
-      $('#joker').onclick = () => {
+      if ($('#joker')) $('#joker').onclick = () => {
         if (S.cafes <= 0) return;
         S.cafes--; joker = true; sauver(); son('clic');
         const q0 = n.choix.map((c, k) => k).filter(k => n.choix[k].q === 0 && !retires.includes(k));
@@ -781,7 +827,7 @@ function jouerGarde(id, gi = 0) {
   function sbar(n, nid) {
     const st = S.etages[id]; st.fins = st.fins || {}; st.fins[g.id] = st.fins[g.id] || [];
     const nouvelle = !st.fins[g.id].includes(nid);
-    if (nouvelle) { st.fins[g.id].push(nid); S.stats.finsDecouvertes = (S.stats.finsDecouvertes || 0) + 1; sauver(); }
+    if (nouvelle) { st.fins[g.id].push(nid); S.stats.finsDecouvertes = (S.stats.finsDecouvertes || 0) + 1; S.jourFins = dateLocale(); sauver(); }
     const lettres = ['S — Situation', 'B — Background (antécédents)', 'A — Assessment (évaluation)', 'R — Recommandation'];
     const items = g.sbar.map((t, k) => ({ t, k }));
     let melange = shuffle(items), choisi = [];
@@ -817,7 +863,7 @@ function jouerGarde(id, gi = 0) {
       <div class="ligne"><span>🗺️ Fins découvertes</span><span>${st.fins[g.id].filter(f => fins.includes(f)).length}/${fins.length}</span></div>
       <div class="bloc b-clair" style="text-align:left"><b class="t">📞 La bonne transmission</b>${lettres.map((l, k) => `<b>${l}</b> : ${esc(g.sbar[k])}`).join('<br>')}</div>
       <div class="bloc b-stage" style="text-align:left"><b class="t">🩺 À retenir de cette garde</b>${esc(g.retenir)}</div>`,
-        [['Rejouer (autre fin ?)', () => jouerGarde(id, gi), 'violet'], ...(gi + 1 < e.gardes.length ? [['Garde suivante →', () => aller('garde', { id, g: gi + 1 }, true), 'vert']] : []), ['Toutes les gardes', () => aller('garde', { id }, true), 'sec']]);
+        [['Rejouer (autre fin ?)', () => jouerGarde(id, gi, mode), 'violet'], ...(gi + 1 < e.gardes.length ? [['Garde suivante →', () => aller('garde', { id, g: gi + 1 }, true), 'vert']] : []), ['Toutes les gardes', () => aller('garde', { id }, true), 'sec']]);
     }
     dessin();
   }
@@ -837,7 +883,7 @@ VUES.escape = ({ id }) => {
 };
 function jouerEscape(id) {
   const e = etage(id), x = e.escape;
-  let k = 0, penalite = 0, debut = Date.now(), chiffres = [], minuteur, indices = 0, fautes = 0;
+  let k = 0, penalite = 0, debut = Date.now(), chiffres = [], minuteur, indices = 0, fautes = 0, jokerEsc = false;
   const temps = () => Math.floor((Date.now() - debut) / 1000) + penalite;
   function cadre(contenu) {
     const m = vue(`${entete('🔐 ' + esc(x.titre), true)}
@@ -855,11 +901,12 @@ function jouerEscape(id) {
     if (en.type === 'code') corps += `<input id="rep" autocomplete="off" placeholder="Ta réponse"><button class="btn" id="val">Valider</button>`;
     else if (en.type === 'ordre') corps += `<div id="ord"></div>`;
     else corps += en.choix.map((c, j) => `<button class="choix" data-j="${j}">${esc(c)}</button>`).join('');
-    corps += `<button class="btn sec" id="ind">💡 Indice (+20 s)</button><div id="fb"></div>`;
+    corps += `<div class="rangee"><button class="btn sec" id="ind">💡 Indice (+20 s)</button><button class="btn sec" id="indc" ${S.cafes > 0 ? '' : 'disabled'}>☕ Indice gratuit</button></div><div id="fb"></div>`;
     const m = cadre(corps);
-    const reussi = () => { chiffres.push(en.chiffre); son('ok'); vibre(40); gagneXP(20); $('#fb').innerHTML = `<div class="verdict ok">🔓 Chiffre trouvé : ${en.chiffre}</div>${en.explication ? `<div class="bloc b-pourquoi"><b class="t">🧠 Le pourquoi</b>${esc(en.explication)}</div>` : ''}<button class="btn vert" id="suiv">Énigme suivante →</button>`; $('#suiv').onclick = () => { k++; enigme(); }; $$('button.choix,#val,#ind', m).forEach(b => b.disabled = true); };
+    const reussi = () => { chiffres.push(en.chiffre); son('ok'); vibre(40); gagneXP(20); $('#fb').innerHTML = `<div class="verdict ok">🔓 Chiffre trouvé : ${en.chiffre}</div>${en.explication ? `<div class="bloc b-pourquoi"><b class="t">🧠 Le pourquoi</b>${esc(en.explication)}</div>` : ''}<button class="btn vert" id="suiv">Énigme suivante →</button>`; $('#suiv').onclick = () => { k++; enigme(); }; $$('button.choix,#val,#ind,#indc', m).forEach(b => b.disabled = true); };
     const rate = el => { fautes++; penalite += 30; son('ko'); vibre([60, 40, 60]); toast('❌ +30 s de pénalité'); if (el) { el.classList.add('secoue'); setTimeout(() => el.classList.remove('secoue'), 400); } };
-    $('#ind').onclick = () => { indices++; penalite += 20; $('#ind').disabled = true; $('#fb').innerHTML = `<div class="bloc b-stage"><b class="t">💡 Indice</b>${esc(en.indice)}</div>`; };
+    $('#indc').onclick = () => { if (S.cafes <= 0) return; S.cafes--; jokerEsc = true; sauver(); $('#ind').disabled = true; $('#indc').disabled = true; $('#fb').innerHTML = `<div class="bloc b-stage"><b class="t">☕ Indice (sans pénalité, étoiles max ★★)</b>${esc(en.indice)}</div>`; };
+    $('#ind').onclick = () => { indices++; penalite += 20; $('#indc').disabled = true; $('#ind').disabled = true; $('#fb').innerHTML = `<div class="bloc b-stage"><b class="t">💡 Indice</b>${esc(en.indice)}</div>`; };
     if (en.type === 'code') {
       const norm = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
       const valider = () => { const r = norm($('#rep').value); if (en.reponses.map(norm).includes(r)) reussi(); else rate($('#rep')); };
@@ -885,7 +932,7 @@ function jouerEscape(id) {
         clearInterval(minuteur);
         const t = temps(), st = S.etages[id], premier = !st.escape;
         st.escape = st.escape ? Math.min(st.escape, t) : t; if (premier) S.stats.escapes++;
-        donnerEtoiles(`escape:${id}`, indices || fautes ? 1 : (t < 90 * x.enigmes.length ? 3 : 2), false);
+        donnerEtoiles(`escape:${id}`, indices || fautes ? 1 : (t < 90 * x.enigmes.length ? 3 : 2), jokerEsc);
         gagneXP(premier ? 120 : 40); confettis(); son('niveau'); sauver();
         ecranResultat('Évadée !', `<div class="grand-emoji">🔓</div><h2>Porte ouverte en ${fmtTemps(t)}</h2><p>${esc(x.victoire)}</p><p class="doux">Record : ${fmtTemps(st.escape)} (dont ${penalite} s de pénalités)</p>`,
           [['Rejouer (battre le record)', () => jouerEscape(id), 'violet'], ['Retour à l’étage', () => aller('etage', { id }, true), 'sec']]);
@@ -938,7 +985,7 @@ VUES.jeux = ({ id: choix } = {}) => {
   $$('[data-j]').forEach(b => b.onclick = () => lancerJeu(b.dataset.id, b.dataset.j));
 };
 function finMini(id, titre, ok, total, rejouer, extra = '') {
-  if (id && jeuCourant) donnerEtoiles(`mini:${id}:${jeuCourant}`, etoilesPct(total ? ok / total : 0), false);
+  if (id && jeuCourant) { donnerEtoiles(`mini:${id}:${jeuCourant}`, etoilesPct(total ? ok / total : 0), false); marquerMini(id, jeuCourant); }
   S.stats.miniJeux++; gagneXP(ok * 8 + 10); if (ok === total) { confettis(); son('niveau'); }
   ecranResultat(titre, `<div class="grand-emoji">${ok === total ? '🌟' : ok >= total / 2 ? '👍' : '💪'}</div><h2>${ok}/${total}</h2>${extra}`,
     [['Rejouer', rejouer, 'violet'], ['Autres mini-jeux', () => history.back(), 'sec']]);
@@ -1122,7 +1169,7 @@ function jeuSituations(id) {
       if (c.q < 2) b.classList.add('ko');
       S.stats.situations++;
       if (c.q < 2) enregistrerErreur({ type: 's', etage: id, i: e.mini.situations.indexOf(x) });
-      if (c.q === 2) { ok++; S.stats.situationsJustes++; son('ok'); vibre(30); gagneXP(12); } else { son(c.q ? 'clic' : 'ko'); if (!c.q) vibre([60, 40, 60]); sauver(); }
+      if (c.q === 2) { ok++; S.stats.situationsJustes++; evenement('situation_ok', { id }); son('ok'); vibre(30); gagneXP(12); } else { son(c.q ? 'clic' : 'ko'); if (!c.q) vibre([60, 40, 60]); sauver(); }
       $('#fb').innerHTML = `<div class="verdict ${c.q === 2 ? 'ok' : 'ko'}">${c.q === 2 ? 'Excellent réflexe ✅' : c.q === 1 ? 'Pas faux, mais pas la priorité 🟠' : 'Décision risquée ❌'}</div>
       <div class="bloc b-pourquoi"><b class="t">🧠 Le pourquoi</b>${esc(c.fb)}</div>${c !== meilleur ? `<div class="bloc b-clair"><b class="t">✅ Le meilleur choix</b>${esc(meilleur.t)} — ${esc(meilleur.fb)}</div>` : ''}
       ${x.stage ? `<div class="bloc b-stage"><b class="t">🩺 En stage</b>${esc(x.stage)}</div>` : ''}<div class="source">📚 ${esc(sourceTexte(e, x.s))}</div><button class="btn" id="suiv">Suivant →</button>`;
@@ -1181,7 +1228,7 @@ function jeuSprint(id) {
     if (reste <= 0) { clearInterval(chrono); fini = true; fin(); }
   }, 1000);
   function fin() {
-    const st = S.etages[id], record = ok > (st.sprint || 0);
+    const st = S.etages[id], record = ok > (st.sprint || 0); marquerMini(id, 'sprint');
     if (record) st.sprint = ok;
     S.stats.miniJeux++; S.stats.reponses += ok + faux; S.stats.bonnes += ok; gagneXP(ok * 5);
     if (record && ok) { confettis(); son('niveau'); }
@@ -1281,6 +1328,129 @@ function jeuGds(id) {
 }
 
 
+
+/* ============================== BOUCLE QUOTIDIENNE : MISSIONS, DÉFI, RÉCOMPENSES ============================== */
+function hashTexte(t) { let h = 1779033703 ^ t.length; for (let i = 0; i < t.length; i++) { h = Math.imul(h ^ t.charCodeAt(i), 3432918353); h = h << 13 | h >>> 19; } return h >>> 0; }
+function rngGraine(seed) { let a = seed >>> 0; return () => { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const choisir = (r, a) => a[Math.floor(r() * a.length)];
+const NOMS_JEUX = { situations: 'Situations flash', prio: 'Qui en premier ?', memory: 'Memory', mots: 'Mot mystère', gds: 'Gaz du sang express', ordre: 'Remets dans l’ordre', tri: 'Tri express', associe: 'Associe', erreur: 'Trouve l’erreur', glasgow: 'Glasgow express', news2: 'NEWS2 express', calcul: 'Calcul flash', sprint: 'Sprint 60 s' };
+function marquerMini(id, j) { const k = id + ':' + j; if (!S.minisJoues[k]) { S.minisJoues[k] = dateLocale(); } evenement('mini_fin', { id, j }); }
+function finsRestantes(id) { const e = etage(id), st = S.etages[id]; return e.gardes.some(g => finsGarde(g).some(f => !(((st.fins || {})[g.id]) || []).includes(f))); }
+function creerMission(type, id, r) {
+  const e = id && etage(id), et = e ? ` ${e.emoji} ${e.titre}` : '';
+  switch (type) {
+    case 'garde': return { type, etage: id, cible: 1, texte: `🌙 Termine une garde${et}`, aller: ['garde', { id }] };
+    case 'fin': return finsRestantes(id) ? { type, etage: id, cible: 1, texte: `🏁 Découvre une nouvelle fin de garde${et}`, aller: ['garde', { id }] } : null;
+    case 'situations': return (e.mini.situations || []).length ? { type, etage: id, cible: 5, texte: `🚑 Réussis 5 situations flash${et}`, aller: ['jeu', { id, j: 'situations' }] } : null;
+    case 'flash': return { type, cible: 15, texte: '🃏 Révise 15 flashcards', aller: ['revision', {}] };
+    case 'carnet': return carnetDus().length >= 5 ? { type, cible: 5, texte: '🩹 Rattrape 5 erreurs de ton carnet', aller: ['rattrapage', {}] } : null;
+    case 'niveau': return { type, etage: id, cible: 1, texte: `🏆 Fais 7/8 ou plus à un niveau de quiz${et}`, aller: ['niveaux', { id }] };
+    case 'etoile': return { type, cible: 1, texte: '★ Gagne au moins 1 nouvelle étoile', aller: ['etage', { id }] };
+    case 'nouveauMini': { const j = listeJeux(id).map(x => x[0]).filter(x => !S.minisJoues[id + ':' + x]); return j.length ? (jj => ({ type, etage: id, j: jj, cible: 1, texte: `🎮 Découvre « ${NOMS_JEUX[jj]} »${et}`, aller: ['jeu', { id, j: jj }] }))(choisir(r, j)) : null; }
+  }
+  return null;
+}
+function missionsDuJour() {
+  const auj = dateLocale();
+  if (S.jour && S.jour.date === auj) return S.jour;
+  const r = rngGraine(hashTexte('missions-' + auj));
+  const ps = prochainStage(), idStage = ps ? ps.e.id : choisir(r, ETAGES).id;
+  const essayer = (types, id) => { for (const t of shuffleR(types, r)) { const m = creerMission(t, id, r); if (m) return m; } return null; };
+  const m1 = essayer(['garde', 'fin', 'situations', 'niveau', 'nouveauMini'], idStage);
+  const m2 = creerMission('carnet', null, r) || creerMission('flash', null, r);
+  let m3 = null;
+  for (let n = 0; n < 6 && !m3; n++) { const id = choisir(r, ETAGES).id; const m = essayer(['garde', 'situations', 'niveau', 'etoile', 'nouveauMini', 'fin'], id); if (m && !(m.type === m1.type && m.etage === m1.etage)) m3 = m; }
+  S.jour = { date: auj, missions: [m1, m2, m3 || creerMission('etoile', idStage, r)].map(m => Object.assign(m, { progres: 0, faite: false })), coffre: false };
+  sauver(); return S.jour;
+}
+function shuffleR(a, r) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+const DEFIS = [['garde80', 3, '🌙 Termine 3 gardes à 80 % ou plus'], ['situations', 25, '🚑 Réussis 25 situations flash'], ['cartes', 60, '🃏 Révise 60 flashcards'], ['niveaux7', 4, '🏆 Fais 4 niveaux de quiz à 7/8 ou plus'], ['fins', 3, '🏁 Découvre 3 nouvelles fins de garde']];
+function defiSemaine() {
+  const cle = semaineISO(dateLocale());
+  if (S.semaine && S.semaine.cle === cle) return S.semaine;
+  const d = choisir(rngGraine(hashTexte('defi-' + cle)), DEFIS);
+  S.semaine = { cle, type: d[0], cible: d[1], texte: d[2], progres: 0, fait: false }; sauver(); return S.semaine;
+}
+/* Événements de jeu → progression des missions et du défi */
+function evenement(type, d) {
+  if (!ETAGES.length) return;
+  const jour = missionsDuJour(), sem = defiSemaine();
+  jour.missions.forEach(m => {
+    if (m.faite) return;
+    let plus = 0;
+    if (type === 'garde_fin' && m.type === 'garde' && d.id === m.etage) plus = 1;
+    if (type === 'fin_nouvelle' && m.type === 'fin' && d.id === m.etage) plus = 1;
+    if (type === 'situation_ok' && m.type === 'situations' && d.id === m.etage) plus = 1;
+    if (type === 'carte' && m.type === 'flash') plus = 1;
+    if (type === 'rattrapage_ok' && m.type === 'carnet') plus = 1;
+    if (type === 'niveau' && m.type === 'niveau' && d.id === m.etage && d.b >= 7) plus = 1;
+    if (type === 'etoile' && m.type === 'etoile') plus = d.n;
+    if (type === 'mini_fin' && m.type === 'nouveauMini' && d.id === m.etage && d.j === m.j) plus = 1;
+    if (!plus) return;
+    m.progres = Math.min(m.cible, m.progres + plus);
+    if (m.progres >= m.cible) {
+      m.faite = true; gagneXP(30); if (S.cafes < CAFES_MAX) S.cafes++;
+      toast('🎯 Mission accomplie : +30 XP, +1 ☕', 3200); son('niveau');
+      if (jour.missions.every(x => x.faite)) {
+        const auj = dateLocale(), ms = S.missionsSerie;
+        if (ms.dernier !== auj) { ms.n = ms.dernier === ajouteJours(auj, -1) ? ms.n + 1 : 1; ms.dernier = auj; ms.max = Math.max(ms.max, ms.n); }
+        toast('🎁 3 missions sur 3 : le coffre du jour est prêt sur l’accueil !', 3800); confettis();
+      }
+    }
+  });
+  if (!sem.fait) {
+    let plus = 0;
+    if (sem.type === 'garde80' && type === 'garde_fin' && d.score >= 80) plus = 1;
+    if (sem.type === 'situations' && type === 'situation_ok') plus = 1;
+    if (sem.type === 'cartes' && type === 'carte') plus = 1;
+    if (sem.type === 'niveaux7' && type === 'niveau' && d.b >= 7) plus = 1;
+    if (sem.type === 'fins' && type === 'fin_nouvelle') plus = 1;
+    if (plus) { sem.progres = Math.min(sem.cible, sem.progres + plus); if (sem.progres >= sem.cible) { sem.fait = true; gagneXP(150); toast('🏅 Défi de la semaine réussi : +150 XP !', 3800); confettis(); } }
+  }
+  verifBadges(); sauver();
+}
+function apresEtoiles(n) { evenement('etoile', { n }); }
+function apresRattrapage() { evenement('rattrapage_ok', {}); }
+function apresCarnetVide() { S.stats.carnetVide = true; verifBadges(); }
+function ouvrirCoffre() {
+  const j = missionsDuJour(); if (j.coffre || !j.missions.every(m => m.faite)) return;
+  j.coffre = true; gagneXP(50); confettis(); son('niveau'); toast('🎁 Coffre ouvert : +50 XP !', 3200); sauver(); aller('accueil', {}, true);
+}
+function missionsHTML() {
+  const j = missionsDuJour(), sem = defiSemaine(), nb = j.missions.filter(m => m.faite).length;
+  return `<div class="carte"><div class="ligne" style="border:none;padding:0 0 6px"><b>🎯 Missions du jour</b><span>${nb}/3</span></div>
+  ${j.missions.map((m, k) => `<button class="etape ${m.faite ? 'ok' : ''}" data-mission="${k}" ${m.faite ? 'disabled' : ''}><span class="n">${m.faite ? '✓' : k + 1}</span><span style="flex:1">${esc(m.texte)}</span><small>${m.progres}/${m.cible}</small></button>`).join('')}
+  ${nb === 3 && !j.coffre ? '<button class="btn orange" id="coffre">🎁 Ouvrir le coffre du jour (+50 XP)</button>' : nb === 3 ? '<p class="doux centre">🎁 Coffre ouvert. Reviens demain pour de nouvelles missions !</p>' : '<p class="doux" style="font-size:.8rem">Chaque mission : +30 XP et +1 ☕. Les 3 : un coffre bonus.</p>'}
+  <div class="ligne" style="border-top:1px solid var(--bord);margin-top:6px"><span>🏅 Défi de la semaine : ${esc(sem.texte)}</span><span>${sem.fait ? '✅' : sem.progres + '/' + sem.cible}</span></div></div>`;
+}
+/* Récompenses débloquées par paliers d’étoiles (en % des étoiles disponibles ; rien ne se dépense) */
+const RECOMPENSES = [
+  [3, 'acc-stetho', '🩺 Stéthoscope pour Monito'],
+  [7, 'pal-menthe', '🎨 Thème de couleur « Menthe »'],
+  [12, 'titre-lynx', '🏷️ Titre « Œil de lynx »'],
+  [18, 'acc-calot', '🧢 Calot de bloc pour Monito'],
+  [25, 'pal-violet', '🎨 Thème de couleur « Nuit violette »'],
+  [33, 'mortelle', '☠️ Garde de la mort (Révision générale)'],
+  [42, 'acc-lunettes', '👓 Lunettes de garde pour Monito'],
+  [52, 'blanche', '🌑 Mode « Nuit blanche » : gardes plus dures (constantes plus variables, sans joker)'],
+  [61, 'pal-corail', '🎨 Thème de couleur « Corail »'],
+  [70, 'acc-couronne', '👑 Couronne + titre « Légende des étages »']
+];
+function seuilRecompense(pct) { return Math.ceil(etoilesTotal().max * pct / 100); }
+function recompenseDebloquee(id) { const r = RECOMPENSES.find(x => x[1] === id || (id === 'titre-legende' && x[1] === 'acc-couronne')); return !!r && etoilesTotal().n >= seuilRecompense(r[0]); }
+function titreActuel() { const t = S.apparence.titre; return t === 'lynx' && recompenseDebloquee('titre-lynx') ? 'Œil de lynx' : t === 'legende' && recompenseDebloquee('acc-couronne') ? 'Légende des étages' : null; }
+/* Monito contextuel */
+function messageMonito(ps) {
+  const j = missionsDuJour(), nb = j.missions.filter(m => m.faite).length;
+  if (S.absence >= 2) return `Te revoilà après ${S.absence} jours ! 💚 On reprend en douceur : une mission rapide ?`;
+  if (ps && !ps.enCours && ps.j <= 7) return `J-${ps.j} avant ton stage <b>${esc(ps.e.titre)}</b> ! Une garde et quelques situations flash à l’étage ${ps.e.num} ?`;
+  if (ps && ps.enCours) return `Tu es en stage <b>${esc(ps.e.titre)}</b> ! Encore ${ps.j} jour(s). Courage, je révise avec toi 💪`;
+  if (nb === 3) return j.coffre ? 'Missions du jour terminées : tu es au top ! 🌟' : 'Les 3 missions sont faites : ouvre vite ton coffre ! 🎁';
+  if (S.jour && S.stats.finsDecouvertes && S.jourFins === dateLocale()) return 'Bravo pour la nouvelle fin de garde découverte aujourd’hui ! 🏁';
+  if (ps && ps.j <= 14) return `Ton stage <b>${esc(ps.e.titre)}</b> commence dans <b>${ps.j} jour(s)</b> ! On s’échauffe à l’étage ${ps.e.num} ?`;
+  return null;
+}
+
 /* ============================== PROGRESSION v2 : ÉTOILES, CARNET D’ERREURS, THÈMES ============================== */
 function etoilesQuiz(b) { return b >= 8 ? 3 : b >= 7 ? 2 : b >= 6 ? 1 : 0; }
 function etoilesBoss(b) { return b >= 10 ? 3 : b >= 9 ? 2 : b >= 7 ? 1 : 0; }
@@ -1306,7 +1476,7 @@ function clesEtoilesEtage(e) {
 }
 function etoilesEtage(e) { const c = clesEtoilesEtage(e); return { n: c.reduce((t, k) => t + (S.etoiles[k] || 0), 0), max: c.length * 3 }; }
 function etoilesTotal() { return ETAGES.reduce((r, e) => { const x = etoilesEtage(e); r.n += x.n; r.max += x.max; return r; }, { n: 0, max: 0 }); }
-function apresGarde({ id, g, score, joker }) { donnerEtoiles(`garde:${id}:${g.id}`, etoilesGarde(score), joker); }
+function apresGarde({ id, g, score, joker, nouvelle }) { donnerEtoiles(`garde:${id}:${g.id}`, etoilesGarde(score), joker); evenement('garde_fin', { id, score }); if (nouvelle) evenement('fin_nouvelle', { id }); }
 
 /* Stats par thème */
 function noterTheme(q, juste) {
@@ -1392,7 +1562,7 @@ function sessionRattrapage(items, anticipe, id) {
     const it = valides[k], r = resoudreErreur(it), e = etage(it.etage);
     const bandeau = `<div class="progression"><span>🩹 ${k + 1}/${valides.length}</span><span>📦 Boîte ${it.boite} · ${it.serie}/3 réussites</span></div>`;
     const suite = juste => { if (juste) ok++; noterRattrapage(it, juste, anticipe); k++; un(); };
-    if (r.type === 'q') quiz({ titre: '🩹 Rattrapage', questions: [r.q], chrono: 0, pasDeCarnet: true, fin: b => suite(b === 1) });
+    if (r.type === 'q') quiz({ titre: '🩹 Rattrapage', questions: [r.q], chrono: 0, pasDeCarnet: true, sansJoker: true, fin: b => suite(b === 1) });
     else jouerUneSituation(e, r.x, '🩹 Rattrapage', bandeau, suite);
   }
   un();
@@ -1473,7 +1643,9 @@ function valider() {
 
 /* ============================== ÉVÉNEMENTS / DÉMARRAGE ============================== */
 function demarrer() {
-  fusionnerScenarios(); charger(); appliquerReglages(); valider();
+  fusionnerScenarios(); charger();
+  const auj = dateLocale(); S.absence = S.derniereVisite ? jours(S.derniereVisite, auj) : 0; S.derniereVisite = auj; sauver();
+  appliquerReglages(); valider();
   matchMedia('(prefers-color-scheme: dark)').addEventListener && matchMedia('(prefers-color-scheme: dark)').addEventListener('change', appliquerReglages);
   $$('nav.bas button').forEach(b => b.onclick = () => { son('clic'); aller(b.dataset.nav); });
   aller('accueil', {}, true);
