@@ -3,6 +3,15 @@
  * Les gardes ont un `id` stable (sert à mémoriser le record) : ne pas le changer. */
 window.SCENARIOS = window.SCENARIOS || {};
 window.SCENARIOS.rea = {
+  tirage: 5,
+  escape: [
+    { titre: 'Le moniteur du box 2', texte: 'PA = 100/40 mmHg. Le chiffre à trouver est le chiffre des dizaines de la PAM.', type: 'code', reponses: ['6', '60'], chiffre: '6', indice: 'PAM = (PAS + 2 × PAD) / 3', explication: '(100 + 80) / 3 = 60 mmHg → 6. C’est sous la cible usuelle de 65 mmHg !' },
+    { titre: 'Le chariot d’urgence', texte: 'Sans voies aériennes sécurisées, combien de compressions avant 2 insufflations ? Le chiffre à trouver est le premier chiffre de la réponse.', type: 'qcm', choix: ['15', '30', '5', '10'], b: 1, chiffre: '3', indice: 'Chez l’adulte : … pour 2.', explication: '30 compressions pour 2 insufflations → 3.' },
+    { titre: 'L’arrivée du patient', texte: 'Remets les étapes de l’évaluation du patient critique dans l’ordre. Chiffre : le nombre d’étapes.', type: 'ordre', etapes: ['A — Voies aériennes', 'B — Respiration', 'C — Circulation', 'D — Neurologique', 'E — Exposition'], chiffre: '5', indice: 'On traite d’abord ce qui tue le plus vite.', explication: 'ABCDE : 5 étapes → 5.' },
+    { titre: 'Le compresseur fatigué', texte: 'Quelle est la profondeur minimale (en cm) des compressions thoraciques chez l’adulte ?', type: 'code', reponses: ['5', 'cinq'], chiffre: '5', indice: 'Entre … et 6 cm.', explication: '5 à 6 cm → 5.' },
+    { titre: 'Les causes cachées', texte: 'Combien de causes réversibles compte-t-on en tout dans les « 4H-4T » ?', type: 'qcm', choix: ['6', '8', '4', '10'], b: 1, chiffre: '8', indice: '4 + 4', explication: '4 H + 4 T = 8.' },
+    { titre: 'Le patient confus', texte: 'Quel outil dépiste le délirium en soins intensifs ? Le chiffre à trouver est le nombre de critères de cet outil.', type: 'qcm', choix: ['RASS', 'CAM-ICU', 'BPS', 'Glasgow'], b: 1, chiffre: '4', indice: 'Il a 4 critères : début aigu/fluctuation, inattention, conscience, pensée.', explication: 'CAM-ICU : 4 critères → 4.' }
+  ],
   gds: true,
   sources: {
     ERCALS: 'ERC Guidelines 2025 — Adult ALS ; Resuscitation Council UK 2025 (adrénaline dès que possible si rythme non choquable, après le 3e choc si choquable) 🟢',

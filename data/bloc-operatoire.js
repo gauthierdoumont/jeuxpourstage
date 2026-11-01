@@ -192,8 +192,8 @@ window.ETAGES.push({
   },
   escape: {
     titre: 'La salle 4 ne s’ouvre plus',
-    intro: 'Panne de badge : la porte de la salle 4 réclame un code à 4 chiffres. Les indices sont cachés dans la check-list, l’arsenal et la SSPI.',
-    final: 'Entre les 4 chiffres trouvés pour ouvrir la salle 4.',
+    intro: 'Panne de badge : la porte de la salle 4 réclame un code. Les indices sont cachés dans la check-list, l’arsenal et la SSPI.',
+    final: 'Entre les chiffres trouvés, dans l’ordre, pour ouvrir la salle 4.',
     victoire: 'Bip ! La salle 4 s’ouvre. Le chirurgien t’attend… avec un sourire (si si).',
     enigmes: [
       { titre: 'Énigme 1 — La check-list', texte: 'Combien de temps compte la check-list de sécurité chirurgicale de l’OMS ?', type: 'code', reponses: ['3', 'trois'], chiffre: '3', indice: 'Avant d’endormir, avant de couper, avant de sortir.', explication: 'Sign in, time out, sign out.' },

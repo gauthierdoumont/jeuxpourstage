@@ -2,6 +2,14 @@
  * Format : voir data/scenarios-rea.js */
 window.SCENARIOS = window.SCENARIOS || {};
 window.SCENARIOS.jugement = {
+  mortelle: [
+    { titre: 'Six patients, six services', intro: 'Tu es l’infirmière de renfort : six appels arrivent en même temps de services différents.', s: 'RAIS+NEWS',
+      patients: [['Réa : patient ventilé, alarme de volume bas, saturation qui chute', 'B : ventilation défaillante chez un patient dépendant de la machine.'], ['SSPI : PA qui chute, pansement abdominal saturé de sang', 'C : hémorragie post-opératoire.'], ['Neuro : nouvelle anisocorie et Glasgow qui baisse', 'D : engagement possible, urgence neurochirurgicale.'], ['Médecine : patiente fébrile, NEWS2 à 5', 'Réévaluation urgente, mais moins immédiate que les trois premiers.'], ['Chirurgie : douleur à 7/10 après une prothèse de genou', 'Douleur à soulager rapidement.'], ['Unité : patient sortant qui attend ses papiers', 'Administratif, en dernier.']] },
+    { titre: 'La nuit qui s’emballe', intro: 'Il est 3 h. Six situations arrivent dans le même quart d’heure.', s: 'RAIS+NEWS',
+      patients: [['Réa : alarme du scope, patient qui ne répond pas et ne respire pas normalement', 'Arrêt cardiaque : massage immédiat.'], ['Réa : stridor et tirage une heure après une extubation', 'A : obstruction des voies aériennes.'], ['Réa : choc septique, PAM sous la cible malgré le remplissage', 'C : choc.'], ['Neuro : Glasgow passé de 15 à 13 après une évacuation d’hématome sous-dural', 'D : dégradation neurologique.'], ['Chirurgie : globe vésical douloureux', 'Inconfort important, à traiter rapidement.'], ['Téléphone : la famille d’un patient stable demande des nouvelles', 'Information, à rappeler quand la situation est sûre.']] },
+    { titre: 'Renfort de jour', intro: 'Six collègues t’appellent à l’aide en même temps.', s: 'RAIS+NEWS',
+      patients: [['Médecine : patient qui s’étouffe en mangeant, ne peut plus parler', 'A : obstruction complète des voies aériennes.'], ['Pneumologie : FR très rapide et saturation basse malgré l’oxygène', 'B : détresse respiratoire.'], ['Chirurgie cardiaque : drains qui donnent beaucoup de sang, tachycardie', 'C : hémorragie.'], ['Neuro : nouvelle faiblesse des deux jambes après une chirurgie du rachis', 'D : compression possible, urgence chirurgicale.'], ['Médecine : fièvre isolée, patient stable et orienté', 'À surveiller et transmettre.'], ['Pharmacie : commande de la semaine à valider', 'Logistique, en dernier.']] }
+  ],
   sources: {
     ADA: 'American Diabetes Association — Standards of Care 2025, section 6 (hypoglycémie : niveau 2 < 54 mg/dL, règle des 15 g / 15 min) 🟢',
     NICEF: 'NICE — Falls: assessment and prevention in older people (chutes à l’hôpital, vérifications après une chute) 🟢',

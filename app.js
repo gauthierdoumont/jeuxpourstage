@@ -12,6 +12,8 @@
  *   version affichée sur l’accueil, mise à jour automatique de l’appli installée.
  * 1.3.0 (2026-11-01) : gardes à embranchements (suite aléatoire, fins multiples mémorisées, variation des
  *   constantes, joker café « Appeler le référent »), validation stricte des gardes ; 4 gardes de la Réa réécrites.
+ * 1.7.0 (2026-11-01) : escape tiré au hasard dans un pool d’énigmes (code différent à chaque partie),
+ *   Révision générale (examen blanc 20 questions, sprint toutes matières, Garde de la mort) ; Réa : 11 énigmes.
  * 1.6.0 (2026-11-01) : missions du jour (graine = date), coffre, défi de la semaine, 10 récompenses par paliers
  *   d’étoiles (accessoires de Monito, couleurs, titres, Garde de la mort, Nuit blanche), jokers 50/50 et
  *   indice d’escape, Monito contextuel, 6 nouveaux badges.
@@ -22,7 +24,7 @@
 'use strict';
 
 /* ============================== CONFIG ============================== */
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.7.0';
 const STORAGE_KEY = 'jeuxpourstage_v1';
 const SCHEMA_VERSION = 2;
 const INTERVALLES = [0, 1, 2, 4, 7, 14];          // jours avant révision, par boîte Leitner (1 à 5)
@@ -107,6 +109,7 @@ function etatParDefaut() {
     cartes: {}, etages: et, badges: {}, etoiles: {}, carnet: {}, themes: {},
     jour: null, semaine: null, minisJoues: {}, missionsSerie: { n: 0, max: 0, dernier: null }, derniereVisite: null, absence: 0,
     apparence: { accessoire: null, palette: 'defaut', titre: null },
+    general: { sprint: 0, examen: 0, mortelle: 0 },
     stats: { reponses: 0, bonnes: 0, meilleurCombo: 0, cartes: 0, glasgowParfaits: 0, escapes: 0, boss: 0, calculs: 0, miniJeux: 0, gardes: 0, sbarParfaits: 0, cartesDepuisCafe: 0, situations: 0, situationsJustes: 0, prioParfaites: 0, memory: 0, mots: 0, gds: 0, rattrapages: 0, finsDecouvertes: 0 },
     reglages: { theme: 'auto', son: true, vibration: true, animations: true },
     dernierExport: null
@@ -336,6 +339,7 @@ VUES.accueil = () => {
   ${missionsHTML()}
   ${rappel ? `<div class="carte alerte-export">💾 Pense à <b>exporter ta sauvegarde</b> (le navigateur peut l’effacer).<button class="btn orange" id="exp">Exporter maintenant</button></div>` : ''}
   <button class="btn orange" data-go="jeux">🎮 Mini-jeux : situations flash, memory, sprint…</button>
+  <button class="btn" data-go="generale">🌐 Révision générale : examen blanc, sprint, Garde de la mort</button>
   ${carnetListe().length ? `<button class="btn rouge" data-go="rattrapage">🩹 Rattrapage : ${carnetDus().length} erreur(s) à revoir aujourd’hui</button>` : ''}
   ${(dues.length || nouvelles.length) ? `<button class="btn violet" id="mission">🃏 Flashcards : ${dues.length ? dues.length + ' carte(s) à revoir' : 'découvrir de nouvelles cartes'}</button>` : ''}
   <div class="hopital"><div class="toit"><span>✚ HÔPITAL DES STAGES ✚</span></div>${etagesHTML}
@@ -468,7 +472,7 @@ function quiz(opts) {
       if (q.t === 'vf') juste = rep !== null && (rep === '1') === !!q.b;
       else { const sel = rep || []; juste = sel.length === q.b.length && sel.every(k => q.b.includes(k)); }
       S.stats.reponses++;
-      noterTheme(q, juste);
+      noterTheme(q, juste); if (opts.surReponse) opts.surReponse(q, juste);
       if (!juste && !opts.pasDeCarnet) enregistrerErreur({ type: 'q', etage: q.etage, qid: q.id });
       if (juste) {
         bonnes++; combo++; S.stats.bonnes++; S.stats.meilleurCombo = Math.max(S.stats.meilleurCombo, combo);
@@ -875,14 +879,16 @@ VUES.escape = ({ id }) => {
   const e = etage(id), x = e.escape;
   vue(`${entete('🔐 ' + esc(x.titre), true)}
   <div class="carte"><div class="grand-emoji">🚪</div><p>${esc(x.intro)}</p>
-  <p class="doux">${x.enigmes.length} énigmes. Chaque énigme résolue te donne un chiffre du code. Mauvaise réponse = +30 s de pénalité. Un indice coûte +20 s.</p>
+  <p class="doux">${nbTirage(x)} énigmes tirées au hasard parmi ${x.enigmes.length} : le code change à chaque partie ! Chaque énigme résolue te donne un chiffre. Mauvaise réponse = +30 s de pénalité. Un indice coûte +20 s.</p>
   ${S.etages[id].escape ? `<p>⏱️ Ton record : <b>${fmtTemps(S.etages[id].escape)}</b> · ${etoilesTexte(S.etoiles['escape:' + id])}</p>` : ''}
   <p class="doux">★ réussi · ★★ sans indice · ★★★ sans indice ni erreur, en moins de 90 s par énigme.</p></div>
   <button class="btn violet" id="go">Entrer dans la salle</button>`);
   $('#go').onclick = () => jouerEscape(id);
 };
+const nbTirage = x => Math.min(x.tirage || x.enigmes.length, x.enigmes.length);
 function jouerEscape(id) {
-  const e = etage(id), x = e.escape;
+  const e = etage(id), x0 = e.escape;
+  const x = Object.assign({}, x0, { enigmes: shuffle(x0.enigmes).slice(0, nbTirage(x0)) });   // tirage au hasard → code différent
   let k = 0, penalite = 0, debut = Date.now(), chiffres = [], minuteur, indices = 0, fautes = 0, jokerEsc = false;
   const temps = () => Math.floor((Date.now() - debut) / 1000) + penalite;
   function cadre(contenu) {
@@ -897,7 +903,7 @@ function jouerEscape(id) {
   function enigme() {
     if (k >= x.enigmes.length) return final();
     const en = x.enigmes[k];
-    let corps = `<div class="carte"><b>${esc(en.titre)}</b><p>${esc(en.texte)}</p></div>`;
+    let corps = `<div class="carte"><b>${esc(en.titre.replace(/^Énigme \d+ — /, ''))}</b><p>${esc(en.texte)}</p></div>`;
     if (en.type === 'code') corps += `<input id="rep" autocomplete="off" placeholder="Ta réponse"><button class="btn" id="val">Valider</button>`;
     else if (en.type === 'ordre') corps += `<div id="ord"></div>`;
     else corps += en.choix.map((c, j) => `<button class="choix" data-j="${j}">${esc(c)}</button>`).join('');
@@ -1202,8 +1208,7 @@ function jeuPrio(id) {
 
 /* ---------- Sprint 60 s ---------- */
 function jeuSprint(id) {
-  const e = etage(id);
-  const pool = shuffle(questionsEtage(e).filter(q => q.t === 'vf' || (q.t === 'qcm' && q.b.length === 1)));
+  const pool = shuffle((id ? [etage(id)] : ETAGES).flatMap(e => questionsEtage(e)).filter(q => q.t === 'vf' || (q.t === 'qcm' && q.b.length === 1)));
   let k = 0, ok = 0, faux = 0, reste = 60, fini = false, chrono;
   function q() {
     if (fini) return;
@@ -1228,12 +1233,12 @@ function jeuSprint(id) {
     if (reste <= 0) { clearInterval(chrono); fini = true; fin(); }
   }, 1000);
   function fin() {
-    const st = S.etages[id], record = ok > (st.sprint || 0); marquerMini(id, 'sprint');
+    const st = id ? S.etages[id] : S.general, record = ok > (st.sprint || 0); if (id) marquerMini(id, 'sprint');
     if (record) st.sprint = ok;
     S.stats.miniJeux++; S.stats.reponses += ok + faux; S.stats.bonnes += ok; gagneXP(ok * 5);
     if (record && ok) { confettis(); son('niveau'); }
     ecranResultat('Sprint 60 s', `<div class="grand-emoji">⚡</div><h2>${ok} bonne(s) réponse(s)</h2><p>${faux} erreur(s)</p><p>${record && ok ? '🏆 Nouveau record !' : 'Record : ' + (st.sprint || 0)}</p>`,
-      [['Encore un sprint !', () => jeuSprint(id), 'violet'], ['Autres mini-jeux', () => history.back(), 'sec']]);
+      [['Encore un sprint !', () => jeuSprint(id), 'violet'], [id ? 'Autres mini-jeux' : 'Révision générale', () => history.back(), 'sec']]);
   }
   q();
   // le chrono est arrêté si on quitte la partie (vue() appelle les nettoyages à chaque écran : on le ré-enregistre)
@@ -1328,6 +1333,85 @@ function jeuGds(id) {
 }
 
 
+
+
+/* ============================== RÉVISION GÉNÉRALE : EXAMEN BLANC, SPRINT, GARDE DE LA MORT ============================== */
+VUES.generale = () => {
+  const G = S.general, mort = recompenseDebloquee('mortelle'), seuil = seuilRecompense((RECOMPENSES.find(r => r[1] === 'mortelle') || [33])[0]);
+  vue(`${entete('🌐 Révision générale', true)}
+  ${monito('Ici, toutes les matières se mélangent : parfait pour vérifier ce qui est vraiment acquis.')}
+  <div class="carte"><b>📝 Examen blanc</b><p class="doux">20 questions, 30 s chacune, bilan par étage et par thème.${G.examen ? ' Meilleur score : ' + G.examen + ' %.' : ''}</p>
+  ${ETAGES.map(e => `<label class="switch"><span>${e.emoji} ${esc(e.titre)}</span><input type="checkbox" data-ex="${e.id}" checked style="width:24px;height:24px"></label>`).join('')}
+  <button class="btn violet" id="examen">Commencer l’examen blanc</button></div>
+  <button class="btn" id="sprint">⚡ Sprint 60 s toutes matières${G.sprint ? ' (record ' + G.sprint + ')' : ''}</button>
+  <button class="btn rouge" id="mort" ${mort ? '' : 'disabled'}>☠️ Garde de la mort ${mort ? (G.mortelle ? '(record ' + G.mortelle + ' %)' : '') : '— 🔒 ★ ' + seuil + ' nécessaires'}</button>
+  <p class="doux" style="font-size:.8rem">Garde de la mort : 6 situations de services différents, puis un classement de priorité mixte.</p>`);
+  $('#examen').onclick = () => { const ids = $$('[data-ex]').filter(c => c.checked).map(c => c.dataset.ex); if (!ids.length) return toast('Choisis au moins un étage'); examenBlanc(ids); };
+  $('#sprint').onclick = () => jeuSprint(null);
+  $('#mort').onclick = () => { if (mort) gardeDeLaMort(); };
+};
+function examenBlanc(ids) {
+  const parEtage = Math.ceil(20 / ids.length);
+  let qs = ids.flatMap(id => { const all = questionsEtage(etage(id)); return shuffle(all.filter(q => !q.auto)).slice(0, parEtage); });
+  qs = shuffle(qs).slice(0, 20);
+  const res = [];
+  quiz({ titre: '📝 Examen blanc', questions: qs, chrono: 30, surReponse: (q, juste) => res.push({ etage: q.etage, th: q.th, juste }),
+    fin: (b, t, xp) => {
+      const pct = Math.round(b / t * 100), G = S.general;
+      G.examen = Math.max(G.examen || 0, pct); if (pct >= 80) S.stats.examen80 = true;
+      gagneXP(pct >= 80 ? 100 : 30); verifBadges(); sauver(); if (pct >= 80) confettis();
+      const grp = (cle) => { const m = {}; res.forEach(r => { const k = cle(r); m[k] = m[k] || [0, 0]; m[k][1]++; if (r.juste) m[k][0]++; }); return m; };
+      const ets = grp(r => r.etage), ths = Object.entries(grp(r => r.etage + ':' + r.th)).sort((a, c) => a[1][0] / a[1][1] - c[1][0] / c[1][1]);
+      const ligne = (lib, v) => `<div class="ligne"><span>${lib}</span><span>${Math.round(v[0] / v[1] * 100)} % (${v[0]}/${v[1]})</span></div>`;
+      ecranResultat('Examen blanc', `<div class="grand-emoji">${pct >= 80 ? '🎓' : pct >= 60 ? '👍' : '📚'}</div><h2>${b}/${t} · ${pct} %</h2>
+      <div style="text-align:left"><b>Par étage</b>${Object.entries(ets).map(([id, v]) => ligne(etage(id).emoji + ' ' + esc(etage(id).titre), v)).join('')}
+      <b>Thèmes à revoir en priorité</b>${ths.slice(0, 4).map(([k, v]) => { const [id, th] = k.split(':'); return ligne(etage(id).emoji + ' ' + esc(etage(id).themes[th] || th), v); }).join('')}</div>
+      <p class="doux">Les questions ratées sont dans ton carnet de rattrapage. +${pct >= 80 ? 100 : 30} XP</p>`,
+        [['Nouvel examen', () => examenBlanc(ids), 'violet'], ['Retour', () => aller('generale', {}, true), 'sec']]);
+    } });
+}
+function gardeDeLaMort() {
+  // 6 situations de services différents : 1 par étage, puis 2 de plus sur des étages différents
+  const avecSit = ETAGES.filter(e => (e.mini.situations || []).length);
+  const ordre = shuffle(avecSit).concat(shuffle(avecSit)).slice(0, 6);
+  const tirees = [], dejaPrises = new Set();
+  ordre.forEach(e => { const x = shuffle(e.mini.situations).find(y => !dejaPrises.has(y)); if (x) { dejaPrises.add(x); tirees.push({ e, x }); } });
+  let k = 0, ok = 0;
+  function une() {
+    if (k >= tirees.length) return prio();
+    const { e, x } = tirees[k];
+    jouerUneSituation(e, x, '☠️ Garde de la mort', `<div class="progression"><span>Patient ${k + 1}/${tirees.length} · ${e.emoji} ${esc(e.service)}</span><span>✅ ${ok}</span></div>`, juste => {
+      if (juste) ok++; else enregistrerErreur({ type: 's', etage: e.id, i: e.mini.situations.indexOf(x) });
+      k++; une();
+    });
+  }
+  function prio() {
+    const ej = etage('jugement'), sets = (ej && ej.mini.mortelle) || [];
+    if (!sets.length) return fin(0, 0);
+    const p = pick(sets); let pris = []; const melange = shuffle(p.patients.map((_, j) => j));
+    function dessin(fini) {
+      vue(`${entete('☠️ Garde de la mort', true)}<div class="carte"><b>Dernière épreuve : ${esc(p.titre)}</b><p>${esc(p.intro)}</p><small class="doux">Touche les patients du plus urgent au moins urgent.</small></div>
+      <div class="carte">${pris.map((j, n) => `<div class="etape ${fini ? (j === n ? 'ok' : 'ko') : ''}"><span class="n">${n + 1}</span>${esc(p.patients[j][0])}</div>`).join('') || '<small class="doux">Ton ordre de passage.</small>'}</div>
+      ${fini ? '' : melange.filter(j => !pris.includes(j)).map(j => `<button class="etape" data-o="${j}">🛏️ ${esc(p.patients[j][0])}</button>`).join('')}
+      ${!fini && pris.length ? '<button class="btn sec" id="annul">↩️ Annuler le dernier</button>' : ''}<div id="fb"></div>`);
+      $$('[data-o]').forEach(b => b.onclick = () => { pris.push(+b.dataset.o); son('clic'); dessin(pris.length === p.patients.length); });
+      if ($('#annul')) $('#annul').onclick = () => { pris.pop(); dessin(); };
+      if (fini) {
+        const bons = pris.filter((j, n) => j === n).length;
+        $('#fb').innerHTML = `<div class="bloc b-clair"><b class="t">✅ L’ordre attendu</b>${p.patients.map((x, n) => `<b>${n + 1}. ${esc(x[0])}</b><br><small>${esc(x[1])}</small>`).join('<br>')}</div><div class="source">📚 ${esc(sourceTexte(ej, p.s))}</div><button class="btn" id="res">Voir le bilan</button>`;
+        $('#res').onclick = () => fin(bons, p.patients.length);
+      }
+    }
+    dessin(false);
+  }
+  function fin(bons, nb) {
+    const pct = Math.round((ok + bons) / (tirees.length + nb) * 100), G = S.general;
+    G.mortelle = Math.max(G.mortelle || 0, pct); gagneXP(Math.round(pct * 2)); if (pct >= 80) confettis(); son('niveau'); sauver();
+    ecranResultat('Garde de la mort', `<div class="grand-emoji">${pct >= 80 ? '🌅' : pct >= 50 ? '🌤️' : '☠️'}</div><h2>${pct} %</h2><div class="ligne"><span>🚑 Situations</span><span>${ok}/${tirees.length}</span></div><div class="ligne"><span>🚦 Priorités</span><span>${bons}/${nb}</span></div><p class="doux">Record : ${G.mortelle} %</p>`,
+      [['Rejouer', gardeDeLaMort, 'rouge'], ['Retour', () => aller('generale', {}, true), 'sec']]);
+  }
+  une();
+}
 
 /* ============================== BOUCLE QUOTIDIENNE : MISSIONS, DÉFI, RÉCOMPENSES ============================== */
 function hashTexte(t) { let h = 1779033703 ^ t.length; for (let i = 0; i < t.length; i++) { h = Math.imul(h ^ t.charCodeAt(i), 3432918353); h = h << 13 | h >>> 19; } return h >>> 0; }
@@ -1592,7 +1676,9 @@ function fusionnerScenarios() {
     const x = X[e.id]; if (!x) return;
     Object.assign(e.sources, x.sources || {});
     (x.gardes || []).forEach(g => e.gardes.push(g));
-    ['ordre', 'tri', 'associe', 'erreur', 'glasgow', 'situations', 'prio', 'mots'].forEach(k => { if (x[k]) e.mini[k] = (e.mini[k] || []).concat(x[k]); });
+    if (x.escape) e.escape.enigmes = e.escape.enigmes.concat(x.escape);   // énigmes d’escape supplémentaires (pool)
+    if (x.tirage) e.escape.tirage = x.tirage;
+    ['ordre', 'tri', 'associe', 'erreur', 'glasgow', 'situations', 'prio', 'mots', 'mortelle'].forEach(k => { if (x[k]) e.mini[k] = (e.mini[k] || []).concat(x[k]); });
     if (x.gds) e.mini.gds = true;
   });
 }

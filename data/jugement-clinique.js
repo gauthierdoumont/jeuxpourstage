@@ -177,8 +177,8 @@ window.ETAGES.push({
   },
   escape: {
     titre: 'Le cadenas du Sommet',
-    intro: 'Le toit de l’hôpital est fermé par un cadenas à 5 chiffres. Les indices sont dans ta tête : modèles, scores et outils du jugement clinique.',
-    final: 'Le cadenas attend 5 chiffres.',
+    intro: 'Le toit de l’hôpital est fermé par un cadenas à code. Les indices sont dans ta tête : modèles, scores et outils du jugement clinique.',
+    final: 'Le cadenas attend les chiffres trouvés, dans l’ordre.',
     victoire: 'Le cadenas s’ouvre. Du sommet, tu vois tout l’hôpital : tu es prête pour ton stage de jugement clinique !',
     enigmes: [
       { titre: 'Énigme 1 — Tanner', texte: 'Combien d’étapes compte le modèle de jugement clinique de Tanner ?', type: 'code', reponses: ['4', 'quatre'], chiffre: '4', indice: 'Remarquer, …, …, réfléchir.', explication: 'Remarquer, interpréter, répondre, réfléchir.' },

@@ -189,8 +189,8 @@ window.ETAGES.push({
   },
   escape: {
     titre: 'Le bloc opératoire de neurochirurgie est fermé',
-    intro: 'Le neurochirurgien a oublié le code du bloc ! Il est caché dans 4 énigmes de neuro. Vite, un patient attend.',
-    final: 'Le clavier attend 4 chiffres.',
+    intro: 'Le neurochirurgien a oublié le code du bloc ! Il est caché dans des énigmes de neuro. Vite, un patient attend.',
+    final: 'Le clavier attend les chiffres trouvés, dans l’ordre.',
     victoire: 'Le bloc s’ouvre : le patient est opéré à temps. Ton sens clinique a fait la différence !',
     enigmes: [
       { titre: 'Énigme 1 — Glasgow', texte: 'Yeux ouverts à la voix, confus, obéit aux ordres. Quel est le score total ? Le chiffre du code est le chiffre des unités.', type: 'qcm', choix: ['12', '13', '14', '15'], b: 1, chiffre: '3', indice: 'Y3 + V4 + M6', explication: '3 + 4 + 6 = 13 → 3.' },

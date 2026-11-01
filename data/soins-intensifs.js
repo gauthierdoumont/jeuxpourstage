@@ -312,11 +312,11 @@ window.ETAGES.push({
   },
   escape: {
     titre: 'Le box 7 est verrouillé',
-    intro: 'Les portes du box 7 se sont bloquées pendant la nuit. Le digicode attend 5 chiffres. Chaque énigme résolue t’en donne un.',
-    final: 'Le digicode clignote. Entre les 5 chiffres trouvés, dans l’ordre.',
+    intro: 'Les portes du box 7 se sont bloquées pendant la nuit. Chaque énigme résolue te donne un chiffre du digicode.',
+    final: 'Le digicode clignote. Entre les chiffres trouvés, dans l’ordre.',
     victoire: 'La porte s’ouvre ! Le patient du box 7 va bien, et toi tu maîtrises la réa.',
     enigmes: [
-      { titre: 'Énigme 1 — Le moniteur', texte: 'PA = 120/60 mmHg. Le premier chiffre du code est le chiffre des dizaines de la PAM.', type: 'code', reponses: ['8', '80'], chiffre: '8', indice: 'PAM = (PAS + 2 × PAD) / 3', explication: '(120 + 120) / 3 = 80 mmHg → 8.' },
+      { titre: 'Énigme 1 — Le moniteur', texte: 'PA = 120/60 mmHg. Le chiffre à trouver est le chiffre des dizaines de la PAM.', type: 'code', reponses: ['8', '80'], chiffre: '8', indice: 'PAM = (PAS + 2 × PAD) / 3', explication: '(120 + 120) / 3 = 80 mmHg → 8.' },
       { titre: 'Énigme 2 — Le lit', texte: 'Patient ventilé. Le bon angle de la tête de lit est entre 30 et 45°. Combien de lettres compte le mot désignant l’infection que cet angle prévient (sigle) ?', type: 'qcm', choix: ['3 (PAV)', '4 (PAVM)', '5 (PAVMS)', '2 (PV)'], b: 1, chiffre: '4', indice: 'Pneumonie Acquise sous Ventilation Mécanique', explication: 'PAVM : pneumonie acquise sous ventilation mécanique.' },
       { titre: 'Énigme 3 — Les 5 moments', texte: 'Remets les moments d’hygiène des mains dans un ordre logique de soin.', type: 'ordre', etapes: ['Avant de toucher le patient', 'Avant un geste aseptique', 'Après un risque d’exposition à un liquide biologique', 'Après avoir touché le patient', 'Après avoir touché l’environnement du patient'], chiffre: '5', indice: 'C’est l’ordre officiel de l’OMS : 2 « avant », puis 3 « après ».', explication: 'Les 5 moments OMS → chiffre 5.' },
       { titre: 'Énigme 4 — Le gaz du sang', texte: 'pH 7,22 ; PaCO₂ 65 ; HCO₃⁻ 25. Quel est le trouble ?', type: 'qcm', choix: ['Acidose métabolique', 'Acidose respiratoire', 'Alcalose respiratoire', 'Alcalose métabolique'], b: 1, chiffre: '2', indice: 'Regarde quel paramètre est anormal : le CO₂ ou les bicarbonates ?', explication: 'pH bas + CO₂ haut = acidose respiratoire. Chiffre : 2.' },
