@@ -6,130 +6,214 @@ window.SCENARIOS.rea = {
   gds: true,
   sources: {
     ERCALS: 'ERC Guidelines 2025 — Adult ALS ; Resuscitation Council UK 2025 (adrénaline dès que possible si rythme non choquable, après le 3e choc si choquable) 🟢',
+    PHYSIO: 'Physiologie / soins infirmiers de base (consensus d’enseignement) 🟠',
+    RAIS: 'Raisonnement clinique et priorisation (consensus d’enseignement) 🟠',
+    RAU: 'Rétention urinaire post-opératoire : protocoles locaux (seuils de sondage variables) 🟠',
     ADA: 'American Diabetes Association — Standards of Care 2025, section 6 (hypoglycémie) 🟢'
   },
   gardes: [
     {
       id: 'rea-acr', titre: 'Arrêt cardiaque au box 5', difficulte: 3,
+      varier: { FC: 6, PAS: 8, SpO2: 1, FR: 2, T: 0.2 },
       intro: 'Il est 4 h 10. M. Hugo F., 72 ans, admis pour infarctus, est au box 5. Tu entends l’alarme du scope en passant dans le couloir.',
       retenir: 'Arrêt cardiaque : reconnaître (pas de réponse, pas de respiration normale), appeler, masser tout de suite, défibriller sans délai si rythme choquable, limiter les interruptions, chercher les 4H-4T. L’adrénaline se donne après le 3e choc si le rythme est choquable, dès que possible s’il ne l’est pas (ERC 2025).',
-      sbar: ['M. F., 72 ans, box 5 : arrêt cardiaque en fibrillation ventriculaire à 4 h 10, récupération d’une activité circulatoire après 3 chocs', 'Admis pour infarctus, kaliémie à 6,9 mmol/L sur la prise de sang de minuit', 'Actuellement PA 96/58, FC 108, SpO₂ 94 % sous O₂, non réveillé', 'Je demande votre évaluation immédiate pour la suite de la prise en charge post-réanimation et la correction du potassium'],
+      sbar: ['M. F., 72 ans, box 5 : arrêt cardiaque en fibrillation ventriculaire, récupération d’une activité circulatoire après plusieurs chocs', 'Admis pour infarctus, kaliémie élevée sur la prise de sang de minuit', 'Actuellement pouls présent, PA basse, non réveillé, sous O₂', 'Je demande votre évaluation immédiate pour la suite de la prise en charge post-réanimation et la correction du potassium'],
       noeuds: {
-        debut: { heure: '04 h 10', patient: 'M. F., 72 ans — infarctus', v: { FC: 0, PAS: null, PAD: null, SpO2: null, FR: 0, T: 36.8, GCS: 3 }, texte: 'Le scope montre un tracé chaotique. M. F. ne répond pas quand tu l’appelles et le secoues doucement. Il ne respire pas normalement.', s: 'ERC',
+        debut: { heure: '04 h 10', patient: 'M. F., 72 ans — infarctus', v: { FC: 0, PAS: null, PAD: null, SpO2: null, FR: 0, T: 36.8, GCS: 3 }, texte: 'Le scope montre un tracé chaotique. M. F. ne répond pas quand tu l’appelles et le secoues doucement. Il ne respire pas normalement.', s: 'ERC', indice: 'Pas de réponse + pas de respiration normale : chaque seconde compte.',
           choix: [
-            { t: 'Crier à l’aide / déclencher l’alarme de réanimation et commencer immédiatement les compressions thoraciques', q: 2, fb: 'Pas de réponse + pas de respiration normale = arrêt cardiaque. Chaque minute sans massage diminue les chances de survie.', suite: 'defib' },
-            { t: 'Chercher le pouls pendant 1 minute pour être sûre', q: 0, fb: 'La recherche du pouls ne doit pas dépasser 10 secondes : elle retarde le massage et elle est peu fiable.', suite: 'defib' },
-            { t: 'Aller chercher le médecin au bureau', q: 0, fb: 'On ne laisse pas un patient en arrêt seul : on appelle (alarme, sonnette, téléphone) et on masse.', suite: 'defib' }
+            { t: 'Crier à l’aide / déclencher l’alarme de réanimation et commencer immédiatement les compressions thoraciques', q: 2, v: {}, fb: 'Pas de réponse + pas de respiration normale = arrêt cardiaque. Chaque minute sans massage diminue les chances de survie.', suite: 'defib' },
+            { t: 'Chercher le pouls pendant 1 minute pour être sûre', q: 0, v: {}, fb: 'La recherche du pouls ne doit pas dépasser 10 secondes : elle retarde le massage et elle est peu fiable.', suite: 'comp_retard' },
+            { t: 'Aller chercher le médecin au bureau', q: 0, v: {}, fb: 'On ne laisse pas un patient en arrêt seul : on appelle (alarme, sonnette, téléphone) et on masse.', suite: 'comp_retard' }
           ] },
-        defib: { heure: '04 h 11', texte: 'Une collègue arrive avec le défibrillateur. Le rythme est une fibrillation ventriculaire.', s: 'ERC',
+        comp_retard: { heure: '04 h 12', texte: '⚠️ Complication : deux minutes se sont écoulées sans massage. Le tracé est toujours chaotique, M. F. est gris.', s: 'ERC', indice: 'Il n’est jamais trop tard pour commencer le massage.',
           choix: [
-            { t: 'Coller les électrodes en continuant le massage, puis choc dès que possible en sécurité (« Tout le monde s’écarte, oxygène écarté »)', q: 2, fb: 'La FV est un rythme choquable : la défibrillation précoce est le traitement qui sauve. On masse jusqu’au choc et on reprend juste après.', suite: 'apres' },
-            { t: 'Attendre l’arrivée du médecin pour défibriller', q: 0, fb: 'Chaque minute de retard de défibrillation réduit la survie. Le protocole du service précise qui peut délivrer le choc, mais on prépare tout immédiatement.', suite: 'apres' },
-            { t: 'Arrêter le massage pendant qu’on cherche les électrodes', q: 1, fb: 'Les interruptions doivent être minimales : on prépare le défibrillateur pendant que quelqu’un masse.', suite: 'apres' }
+            { t: 'Débuter immédiatement les compressions et faire déclencher l’alarme par la première personne qui arrive', q: 2, v: {}, fb: 'Rattrapage : on masse tout de suite. Le retard a diminué les chances, mais le massage reste vital.', suite: 'defib' },
+            { t: 'Continuer à chercher le pouls', q: 0, v: {}, fb: 'Sans massage, le cerveau n’est plus oxygéné.', suite: 'fin_mauvaise' }
           ] },
-        apres: { heure: '04 h 13', texte: 'Après le choc, que fait l’équipe ?', s: 'ERC',
+        defib: { heure: '04 h 13', texte: 'Une collègue arrive avec le défibrillateur. Le rythme est une fibrillation ventriculaire.', s: 'ERC', indice: 'La FV est-elle choquable ?',
           choix: [
-            { t: 'Reprendre immédiatement les compressions pour 2 minutes avant de réanalyser le rythme', q: 2, fb: 'Juste après un choc, le cœur pompe rarement efficacement : on reprend le massage sans vérifier le pouls.', suite: 'relais' },
-            { t: 'Vérifier le pouls pendant 30 secondes', q: 0, fb: 'Cela crée une longue pause sans circulation. On masse 2 minutes, puis on analyse.', suite: 'relais' },
-            { t: 'Donner tout de suite l’adrénaline avant de reprendre le massage', q: 1, fb: 'En rythme choquable, l’adrénaline est donnée après le 3e choc (ERC 2025), et jamais au prix d’une pause de massage.', suite: 'relais' }
+            { t: 'Coller les électrodes en continuant le massage, puis choc dès que possible en sécurité (« Tout le monde s’écarte, oxygène écarté »)', q: 2, v: {}, fb: 'La FV est un rythme choquable : la défibrillation précoce est le traitement qui sauve.', suite: 'apres' },
+            { t: 'Attendre l’arrivée du médecin pour défibriller', q: 0, v: {}, fb: 'Chaque minute de retard de défibrillation réduit la survie. Le protocole précise qui délivre le choc, mais on prépare tout immédiatement.', suite: 'comp_choc' },
+            { t: 'Arrêter le massage pendant qu’on cherche les électrodes', q: 1, v: {}, fb: 'Les interruptions doivent être minimales : on prépare le défibrillateur pendant que quelqu’un masse.', suite: 'apres' }
           ] },
-        relais: { heure: '04 h 15', texte: 'Tu masses depuis 2 minutes. Tu sens que tes compressions deviennent moins profondes.', s: 'ERC',
+        comp_choc: { heure: '04 h 16', texte: '⚠️ Complication : la FV persiste depuis plusieurs minutes, toujours pas de choc délivré.', s: 'ERC', indice: 'Le défibrillateur est là : qu’attend-on ?',
           choix: [
-            { t: 'Demander un relais au moment de l’analyse du rythme (toutes les 2 minutes)', q: 2, fb: 'La fatigue diminue la qualité du massage en 1 à 2 minutes. Le relais au moment de l’analyse limite les interruptions.', suite: 'causes' },
-            { t: 'Continuer coûte que coûte sans rien dire', q: 1, fb: 'C’est courageux, mais des compressions trop superficielles font chuter la perfusion du cerveau et du cœur.', suite: 'causes' },
-            { t: 'Ralentir à 60 compressions par minute pour tenir', q: 0, fb: 'La fréquence doit rester entre 100 et 120/min, profondeur 5-6 cm.', suite: 'causes' }
+            { t: 'Choquer dès que possible selon le protocole du service (DSA ou personne habilitée) en continuant le massage entre-temps', q: 2, v: {}, fb: 'Rattrapage : le choc est délivré. Le délai a réduit les chances, mais la réanimation continue.', suite: 'apres' },
+            { t: 'Arrêter la réanimation en attendant le médecin', q: 0, v: {}, fb: 'On n’arrête jamais une réanimation de sa propre initiative.', suite: 'fin_mauvaise' }
           ] },
-        causes: { heure: '04 h 18', texte: 'Le médecin demande : « Quelles causes réversibles chercher ? » Tu sais que la kaliémie de minuit était à 6,9 mmol/L.', s: 'ERC',
+        apres: { heure: '04 h 17', texte: 'Après le choc, que fait l’équipe ?', s: 'ERC+ERCALS', indice: 'Juste après un choc, le cœur pompe rarement efficacement.',
           choix: [
-            { t: 'Signaler tout de suite l’hyperkaliémie (4H : hypo/hyperkaliémie) et apporter le dossier', q: 2, fb: 'Les 4H-4T sont la clé : l’hyperkaliémie se traite spécifiquement. Une information connue mais non transmise est une chance perdue.', suite: 'rosc' },
-            { t: 'Ne rien dire, ce n’est pas ton rôle', q: 0, fb: 'Toute l’équipe participe à la recherche des causes. Ta donnée peut changer le traitement.', suite: 'rosc' },
-            { t: 'Proposer de refaire une prise de sang complète dans 1 heure', q: 1, fb: 'Un contrôle est utile, mais l’information disponible MAINTENANT doit être transmise.', suite: 'rosc' }
+            { t: 'Reprendre immédiatement les compressions pour 2 minutes avant de réanalyser le rythme', q: 2, v: {}, fb: 'On reprend le massage sans vérifier le pouls : 2 minutes, puis analyse.', suite: ['relais', 'evt_box'] },
+            { t: 'Vérifier le pouls pendant 30 secondes', q: 0, v: {}, fb: 'Cela crée une longue pause sans circulation.', suite: 'relais' },
+            { t: 'Donner tout de suite l’adrénaline avant de reprendre le massage', q: 1, v: {}, fb: 'En rythme choquable, l’adrénaline est donnée après le 3e choc (ERC 2025), et jamais au prix d’une pause de massage.', suite: 'relais' }
           ] },
-        rosc: { heure: '04 h 24', v: { FC: 108, PAS: 96, PAD: 58, SpO2: 94, FR: 14, GCS: 3 }, texte: 'Après le 3e choc, une activité circulatoire revient (pouls palpable, PA 96/58). Que fais-tu ?', s: 'ERC',
+        evt_box: { evenement: true, heure: '04 h 18', texte: 'Imprévu : l’alarme du box 6 sonne en même temps (« pousse-seringue vide »). Tu es en train de masser.', s: 'ERC', indice: 'Peut-on quitter un massage cardiaque ?',
           choix: [
-            { t: 'Réévaluation ABCDE, surveillance continue, préparer la suite avec l’équipe et tracer les heures (chocs, médicaments)', q: 2, fb: 'La phase post-réanimation est à risque de récidive : surveillance continue, recherche de la cause et traçabilité précise.', suite: 'fin' },
-            { t: 'Ranger le chariot, c’est terminé', q: 0, fb: 'Le patient reste extrêmement instable : il peut refaire un arrêt à tout moment.', suite: 'fin' },
-            { t: 'Appeler la famille avant de surveiller le patient', q: 1, fb: 'La famille doit être prévenue (par le médecin, selon l’organisation), mais la surveillance du patient passe d’abord.', suite: 'fin' }
+            { t: 'Continuer le massage et demander à une collègue qui arrive d’aller voir le box 6', q: 2, v: {}, fb: 'Le massage ne s’interrompt pas : on délègue l’autre alarme.', suite: 'relais' },
+            { t: 'Aller vite au box 6 et revenir', q: 0, v: {}, fb: 'Une interruption de massage fait chuter la perfusion cérébrale et coronaire en quelques secondes.', suite: 'relais' },
+            { t: 'Ignorer l’alarme du box 6', q: 1, v: {}, fb: 'Le massage d’abord, oui, mais quelqu’un doit aller voir : on délègue.', suite: 'relais' }
           ] },
-        fin: { fin: true, texte: '04 h 40 : M. F. est stabilisé. Le cardiologue de garde arrive et te demande de résumer la situation.' }
+        relais: { heure: '04 h 19', texte: 'Tu masses depuis 2 minutes. Tu sens que tes compressions deviennent moins profondes.', s: 'ERC', indice: 'La fatigue arrive vite : comment garder un massage de qualité ?',
+          choix: [
+            { t: 'Demander un relais au moment de l’analyse du rythme (toutes les 2 minutes)', q: 2, v: {}, fb: 'Le relais au moment de l’analyse limite les interruptions et garde un massage efficace.', suite: 'causes' },
+            { t: 'Continuer coûte que coûte sans rien dire', q: 1, v: {}, fb: 'Des compressions trop superficielles font chuter la perfusion.', suite: 'causes' },
+            { t: 'Ralentir à 60 compressions par minute pour tenir', q: 0, v: {}, fb: 'La fréquence doit rester entre 100 et 120/min, profondeur 5-6 cm.', suite: 'causes' }
+          ] },
+        causes: { heure: '04 h 22', texte: 'Le médecin demande : « Quelles causes réversibles chercher ? » Tu sais que la kaliémie de minuit était élevée.', s: 'ERC', indice: 'Pense aux 4H et 4T… et au résultat de minuit.',
+          choix: [
+            { t: 'Signaler tout de suite l’hyperkaliémie (un des 4H) et apporter le dossier', q: 2, v: {}, fb: 'Les 4H-4T sont la clé : l’hyperkaliémie se traite spécifiquement.', suite: 'rosc' },
+            { t: 'Ne rien dire, ce n’est pas ton rôle', q: 0, v: {}, fb: 'Toute l’équipe participe à la recherche des causes. Ta donnée peut changer le traitement.', suite: 'comp_causes' },
+            { t: 'Proposer de refaire une prise de sang dans 1 heure', q: 1, v: {}, fb: 'Un contrôle est utile, mais l’information disponible maintenant doit être transmise.', suite: 'rosc' }
+          ] },
+        comp_causes: { heure: '04 h 28', texte: '⚠️ Complication : après plusieurs chocs, la FV récidive. Le médecin cherche une cause.', s: 'ERC', indice: 'Une information que tu connais pourrait tout changer.',
+          choix: [
+            { t: 'Signaler enfin la kaliémie élevée de minuit', q: 2, v: {}, fb: 'Rattrapage : le potassium est corrigé et l’activité circulatoire revient, mais plus tard.', suite: 'rosc_tard' },
+            { t: 'Continuer à se taire', q: 0, v: {}, fb: 'La cause n’est pas traitée : la réanimation échoue.', suite: 'fin_mauvaise' }
+          ] },
+        rosc: { heure: '04 h 26', v: { FC: 108, PAS: 96, PAD: 58, SpO2: 94, FR: 14, GCS: 3 }, texte: 'Après le 3e choc, une activité circulatoire revient (pouls palpable, PA mesurable). Que fais-tu ?', s: 'ERC', indice: 'La phase post-réanimation reste très instable.',
+          choix: [
+            { t: 'Réévaluation ABCDE, surveillance continue, préparer la suite avec l’équipe et tracer les heures (chocs, médicaments)', q: 2, v: { FC: 100, PAS: 104, PAD: 62 }, fb: 'Surveillance continue, recherche de la cause et traçabilité précise.', suite: 'fin_bonne' },
+            { t: 'Appeler la famille avant de surveiller le patient', q: 1, v: {}, fb: 'La famille doit être prévenue (par le médecin, selon l’organisation), mais la surveillance passe d’abord.', suite: 'fin_moyenne' },
+            { t: 'Ranger le chariot, c’est terminé', q: 0, v: { FC: 0, PAS: null, PAD: null, SpO2: null, FR: 0 }, fb: 'Le patient peut refaire un arrêt à tout moment.', suite: 'comp_recidive' }
+          ] },
+        comp_recidive: { heure: '04 h 30', v: { FC: 0, PAS: null, PAD: null, SpO2: null, FR: 0 }, texte: '⚠️ Complication : en rangeant, tu entends l’alarme : M. F. refait un arrêt cardiaque.', s: 'ERC', indice: 'Même réflexe qu’au début : appeler et masser.',
+          choix: [
+            { t: 'Alarme de réanimation et compressions immédiates', q: 2, v: { FC: 112, PAS: 88, PAD: 52, SpO2: 92, FR: 14 }, fb: 'Rattrapage : le pouls revient après une nouvelle réanimation.', suite: 'fin_moyenne' },
+            { t: 'Attendre de voir si le rythme revient seul', q: 0, v: {}, fb: 'Sans massage, il n’y a pas de circulation.', suite: 'fin_mauvaise' }
+          ] },
+        rosc_tard: { heure: '04 h 40', v: { FC: 116, PAS: 86, PAD: 50, SpO2: 92, FR: 14, GCS: 3 }, texte: 'L’activité circulatoire est revenue, après une réanimation plus longue. Que fais-tu ?', s: 'ERC', indice: 'Même chose qu’après tout retour de pouls.',
+          choix: [
+            { t: 'ABCDE, surveillance continue et traçabilité', q: 2, v: { PAS: 94, PAD: 56 }, fb: 'Bonne réaction : le pronostic dépendra de la durée de l’arrêt.', suite: 'fin_moyenne' },
+            { t: 'Quitter le box pour souffler', q: 0, v: { PAS: 78, PAD: 44 }, fb: 'Le patient reste extrêmement instable.', suite: 'fin_mauvaise' }
+          ] },
+        fin_bonne: { fin: true, issue: 'bonne', titre: 'Réanimation réussie', texte: '04 h 40 : M. F. est stabilisé. Massage immédiat, choc précoce et cause trouvée : tu as fait la différence.' },
+        fin_moyenne: { fin: true, issue: 'moyenne', titre: 'Pouls revenu, pronostic incertain', texte: 'M. F. a récupéré une activité circulatoire, mais la réanimation a été plus longue ou moins bien suivie. Son pronostic neurologique est incertain.' },
+        fin_mauvaise: { fin: true, issue: 'mauvaise', titre: 'Réanimation sans succès', texte: 'Malgré les efforts de l’équipe, M. F. n’a pas récupéré. Rejoue : où le temps s’est-il perdu ?' }
       }
     },
     {
       id: 'rea-ventile', titre: 'Le patient ventilé qui désature', difficulte: 2,
+      varier: { FC: 6, PAS: 8, SpO2: 1, FR: 2, T: 0.2 },
       intro: 'Il est 13 h. Mme Odile B., 61 ans, intubée et ventilée pour une pneumonie grave, est sous sédation légère. Son ventilateur se met à sonner.',
       retenir: 'Patient ventilé qui se dégrade : regarder le patient avant la machine, penser DOPE (Déplacement, Obstruction, Pneumothorax, Équipement), ventiler au ballon avec O₂ si doute sur la machine, appeler tôt.',
-      sbar: ['Mme B., 61 ans, box 2 : désaturation brutale à 78 % avec alarme de pression haute', 'Intubée depuis 3 jours pour pneumonie grave, sédation légère', 'La sonde était obstruée par un bouchon de sécrétions, levé par aspiration : SpO₂ remontée à 95 %', 'Je souhaite que vous la réévaluiez et que l’on discute de l’humidification et de la fréquence des soins'],
+      sbar: ['Mme B., 61 ans, box 2 : désaturation brutale avec alarme de pression haute', 'Intubée depuis 3 jours pour pneumonie grave, sédation légère', 'La sonde était obstruée par un bouchon de sécrétions ; saturation remontée après sa levée', 'Je souhaite que vous la réévaluiez et que l’on discute de l’humidification et de la fréquence des soins'],
       noeuds: {
-        debut: { heure: '13 h 00', patient: 'Mme B., 61 ans — pneumonie, ventilée', v: { FC: 118, PAS: 148, PAD: 82, SpO2: 84, FR: 30, T: 38.1, GCS: 10, GCSlabel: 'RASS' }, texte: 'Alarme « pression haute ». SpO₂ 84 % et en baisse. Que fais-tu en premier ?', s: 'PHYSIO',
+        debut: { heure: '13 h 00', patient: 'Mme B., 61 ans — pneumonie, ventilée', v: { FC: 118, PAS: 148, PAD: 82, SpO2: 85, FR: 30, T: 38.1, GCS: 0, GCSlabel: 'RASS' }, texte: 'Alarme « pression haute ». La saturation baisse. Que fais-tu en premier ?', s: 'PHYSIO', indice: 'Patient d’abord, machine ensuite.',
           choix: [
-            { t: 'Regarder la patiente : thorax, couleur, sonde, circuit, et appeler ton infirmière', q: 2, fb: 'On évalue le patient avant la machine. Un regard suffit souvent à trouver la cause (sonde mordue, circuit débranché…).', suite: 'dope' },
-            { t: 'Couper l’alarme pour réfléchir au calme', q: 0, fb: 'Couper une alarme sans traiter la cause est dangereux.', suite: 'dope', v: { SpO2: 80 } },
-            { t: 'Augmenter la sédation car elle lutte', q: 0, fb: 'Sédater sans chercher la cause masque le problème : la patiente peut avoir une sonde bouchée.', suite: 'dope', v: { SpO2: 80 } }
+            { t: 'Regarder la patiente : thorax, couleur, sonde, circuit, et appeler ton infirmière', q: 2, v: {}, fb: 'On évalue le patient avant la machine. Un regard suffit souvent à trouver la cause.', suite: 'dope' },
+            { t: 'Couper l’alarme pour réfléchir au calme', q: 0, v: { SpO2: 80, FC: 126 }, fb: 'Couper une alarme sans traiter la cause est dangereux.', suite: 'comp_hypox' },
+            { t: 'Augmenter la sédation car elle lutte', q: 0, v: { SpO2: 80, FC: 126 }, fb: 'Sédater sans chercher la cause masque le problème.', suite: 'comp_hypox' }
           ] },
-        dope: { heure: '13 h 02', v: { SpO2: 80 }, texte: 'Le circuit est bien branché, le repère de la sonde n’a pas bougé. On entend des gargouillis, le ventilateur peine à insuffler.', s: 'PHYSIO',
+        comp_hypox: { heure: '13 h 04', v: { SpO2: 76, FC: 134, PAS: 160, PAD: 90 }, texte: '⚠️ Complication : la saturation s’effondre, la patiente devient cyanosée.', s: 'PHYSIO', indice: 'Si la machine ne ventile pas efficacement, il existe un moyen de ventiler à la main.',
           choix: [
-            { t: 'Penser à une obstruction : aspiration endotrachéale selon protocole (préoxygénation, passage court)', q: 2, fb: 'Gargouillis + pression haute = obstruction par les sécrétions probable. L’aspiration est le geste de première intention.', suite: 'bouchon' },
-            { t: 'Dégonfler le ballonnet', q: 0, fb: 'Cela provoquerait une fuite et des inhalations, sans lever l’obstruction.', suite: 'bouchon' },
-            { t: 'Attendre la radio de thorax', q: 0, fb: 'La radio prend du temps ; la patiente désature maintenant.', suite: 'bouchon' }
+            { t: 'Déconnecter et ventiler au ballon avec 100 % d’O₂, appel urgent de l’équipe médicale', q: 2, v: { SpO2: 84, FC: 124 }, fb: 'Rattrapage : la ventilation manuelle gagne du temps pendant que l’équipe arrive.', suite: 'bouchon' },
+            { t: 'Attendre que la saturation remonte seule', q: 0, v: { SpO2: 68, FC: 52 }, fb: 'Une hypoxie profonde mène à la bradycardie puis à l’arrêt.', suite: 'fin_mauvaise' }
           ] },
-        bouchon: { heure: '13 h 05', v: { SpO2: 76, FC: 128 }, texte: 'La sonde d’aspiration bute : elle ne passe pas. La saturation chute à 76 %.', s: 'PHYSIO',
+        dope: { heure: '13 h 02', v: { SpO2: 82 }, texte: 'Le circuit est bien branché, le repère de la sonde n’a pas bougé. On entend des gargouillis, le ventilateur peine à insuffler.', s: 'PHYSIO', indice: 'DOPE : Déplacement, Obstruction, Pneumothorax, Équipement. Laquelle colle aux gargouillis ?',
           choix: [
-            { t: 'Déconnecter et ventiler au ballon avec 100 % d’O₂ pendant que l’équipe médicale est appelée en urgence', q: 2, fb: 'Si la sonde est bouchée et que la machine ne ventile plus, on ventile manuellement et on appelle : le médecin décidera (lavage, changement de sonde).', suite: 'apres' },
-            { t: 'Forcer la sonde d’aspiration', q: 0, fb: 'Forcer peut léser la trachée sans résoudre le bouchon.', suite: 'apres' },
-            { t: 'Augmenter la FiO₂ et attendre', q: 1, fb: 'Plus d’oxygène n’aide pas si l’air ne passe pas.', suite: 'apres' }
+            { t: 'Penser à une obstruction : aspiration endotrachéale selon protocole (préoxygénation, passage court)', q: 2, v: {}, fb: 'Gargouillis + pression haute = obstruction par les sécrétions probable.', suite: 'bouchon' },
+            { t: 'Dégonfler le ballonnet', q: 0, v: { SpO2: 78 }, fb: 'Cela provoquerait une fuite et des inhalations, sans lever l’obstruction.', suite: 'comp_hypox' },
+            { t: 'Attendre la radio de thorax', q: 1, v: { SpO2: 80 }, fb: 'La radio prend du temps ; la patiente désature maintenant.', suite: 'bouchon' }
           ] },
-        apres: { heure: '13 h 15', v: { SpO2: 95, FC: 104, PAS: 132, PAD: 74 }, texte: 'Le médecin lève le bouchon (sécrétions épaisses). SpO₂ 95 %. Que surveilles-tu ensuite ?', s: 'IHI+PHYSIO',
+        bouchon: { heure: '13 h 05', v: { SpO2: 78, FC: 128 }, texte: 'La sonde d’aspiration bute : elle ne passe pas. La saturation continue de chuter.', s: 'PHYSIO', indice: 'La sonde est probablement bouchée : qui peut la changer ou la déboucher ?',
           choix: [
-            { t: 'Pression du ballonnet, repère de la sonde, aspect des sécrétions, humidification, tête à 30-45°, SpO₂ et courbes', q: 2, fb: 'On prévient la récidive (humidification, aspirations sur indication) et on applique le bundle PAVM.', suite: 'famille' },
-            { t: 'Rien, le problème est réglé', q: 0, fb: 'Les bouchons récidivent si l’humidification et les soins ne sont pas adaptés.', suite: 'famille' },
-            { t: 'Aspirer systématiquement toutes les 30 minutes', q: 1, fb: 'On aspire sur indication : les aspirations répétées irritent et font désaturer.', suite: 'famille' }
+            { t: 'Ventiler au ballon avec 100 % d’O₂ pendant que l’équipe médicale est appelée en urgence', q: 2, v: { SpO2: 88, FC: 116 }, fb: 'Le médecin décidera (lavage, changement de sonde). En attendant, on oxygène.', suite: 'apres' },
+            { t: 'Forcer la sonde d’aspiration', q: 0, v: { SpO2: 74, FC: 136 }, fb: 'Forcer peut léser la trachée sans résoudre le bouchon.', suite: 'comp_hypox2' },
+            { t: 'Augmenter la FiO₂ et attendre', q: 1, v: { SpO2: 79 }, fb: 'Plus d’oxygène n’aide pas si l’air ne passe pas.', suite: 'apres' }
           ] },
-        famille: { heure: '14 h 00', texte: 'Le mari de Mme B. arrive, très inquiet : « Elle a failli mourir ? Personne ne m’a appelé ! »', s: 'PADIS',
+        comp_hypox2: { heure: '13 h 08', v: { SpO2: 70, FC: 58, PAS: 110, PAD: 60 }, texte: '⚠️ Complication : saignement dans la sonde, la FC commence à ralentir.', s: 'PHYSIO+ERC', indice: 'Bradycardie + hypoxie : c’est l’urgence absolue.',
           choix: [
-            { t: 'L’accueillir, écouter, expliquer simplement ce que tu peux, et organiser un entretien avec le médecin', q: 2, fb: 'La famille fait partie du soin (F du bundle ABCDEF). Les informations médicales détaillées relèvent du médecin, mais l’accueil et l’écoute sont infirmiers.', suite: 'fin' },
-            { t: 'Lui dire que ce n’est pas le moment et refermer la porte', q: 0, fb: 'L’angoisse non accueillie devient souvent conflit et méfiance.', suite: 'fin' },
-            { t: 'Lui donner tous les détails médicaux toi-même', q: 1, fb: 'L’intention est bonne, mais l’information médicale (pronostic, traitements) se donne par le médecin.', suite: 'fin' }
+            { t: 'Appel d’urgence, ventilation manuelle à 100 % d’O₂, chariot d’urgence prêt', q: 2, v: { SpO2: 82, FC: 98 }, fb: 'Rattrapage in extremis : l’équipe change la sonde.', suite: 'apres_tard' },
+            { t: 'Continuer à aspirer', q: 0, v: { SpO2: 60, FC: 40 }, fb: 'L’hypoxie mène à l’arrêt cardiaque.', suite: 'fin_mauvaise' }
           ] },
-        fin: { fin: true, texte: '15 h : Mme B. est stable. Le médecin de l’après-midi passe au box et te demande ce qui s’est passé.' }
+        apres: { heure: '13 h 15', v: { SpO2: 95, FC: 104, PAS: 132, PAD: 74 }, texte: 'Le médecin lève le bouchon (sécrétions épaisses). La saturation remonte. Que surveilles-tu ensuite ?', s: 'IHI+PHYSIO', indice: 'Comment éviter que le bouchon revienne ?',
+          choix: [
+            { t: 'Pression du ballonnet, repère de la sonde, aspect des sécrétions, humidification, tête à 30-45°, SpO₂ et courbes', q: 2, v: { FC: 96 }, fb: 'On prévient la récidive et on applique le bundle PAVM.', suite: ['famille', 'evt_alarme'] },
+            { t: 'Aspirer systématiquement toutes les 30 minutes', q: 1, v: {}, fb: 'On aspire sur indication : les aspirations répétées irritent et font désaturer.', suite: 'famille' },
+            { t: 'Rien, le problème est réglé', q: 0, v: { SpO2: 90 }, fb: 'Les bouchons récidivent si l’humidification et les soins ne sont pas adaptés.', suite: 'apres_tard' }
+          ] },
+        evt_alarme: { evenement: true, heure: '13 h 30', texte: 'Imprévu : un kiné passe et propose de faire la séance de Mme B. tout de suite, tête du lit à plat.', s: 'IHI', indice: 'Mobiliser, oui. Mais que dit le bundle PAVM sur la tête du lit ?',
+          choix: [
+            { t: 'Accepter la séance en se coordonnant (surveillance de la sonde et de la SpO₂) et remettre la tête à 30-45° après', q: 2, v: {}, fb: 'La mobilisation précoce fait partie du bundle ; la tête se remet à 30-45° après le soin.', suite: 'famille' },
+            { t: 'Refuser toute mobilisation pendant 24 h', q: 1, v: {}, fb: 'Mobiliser est bénéfique ; on adapte selon la tolérance.', suite: 'famille' },
+            { t: 'Laisser la tête à plat le reste de la journée', q: 0, v: { SpO2: 92 }, fb: 'À plat, les micro-inhalations augmentent.', suite: 'apres_tard' }
+          ] },
+        apres_tard: { heure: '14 h 30', v: { SpO2: 91, FC: 108, T: 38.4 }, texte: 'Mme B. a été instable. Le médecin te demande ce qu’il faut renforcer.', s: 'IHI', indice: 'Pense aux mesures du bundle de prévention des PAVM.',
+          choix: [
+            { t: 'Humidification, aspirations sur indication, tête à 30-45°, soins de bouche, surveillance du ballonnet', q: 2, v: { SpO2: 94 }, fb: 'Rattrapage : les mesures de prévention sont remises en place.', suite: 'fin_moyenne' },
+            { t: 'Rien de spécial', q: 0, v: { SpO2: 88 }, fb: 'Les complications vont se répéter.', suite: 'fin_mauvaise' }
+          ] },
+        famille: { heure: '14 h 00', texte: 'Le mari de Mme B. arrive, très inquiet : « Elle a failli mourir ? Personne ne m’a appelé ! »', s: 'PADIS', indice: 'Le F du bundle ABCDEF.',
+          choix: [
+            { t: 'L’accueillir, écouter, expliquer simplement ce que tu peux, et organiser un entretien avec le médecin', q: 2, v: {}, fb: 'La famille fait partie du soin. L’information médicale relève du médecin, l’accueil est infirmier.', suite: 'fin_bonne' },
+            { t: 'Lui donner tous les détails médicaux toi-même', q: 1, v: {}, fb: 'L’information médicale (pronostic, traitements) se donne par le médecin.', suite: 'fin_moyenne' },
+            { t: 'Lui dire que ce n’est pas le moment et refermer la porte', q: 0, v: {}, fb: 'L’angoisse non accueillie devient souvent conflit et méfiance.', suite: 'fin_moyenne' }
+          ] },
+        fin_bonne: { fin: true, issue: 'bonne', titre: 'Bouchon levé, famille rassurée', texte: '15 h : Mme B. est stable, la prévention est en place et son mari a pu parler au médecin.' },
+        fin_moyenne: { fin: true, issue: 'moyenne', titre: 'Stable, mais fragile', texte: '15 h : Mme B. est stable, mais la journée a été chaotique (épisodes de désaturation ou famille mal accueillie). Rejoue pour faire mieux.' },
+        fin_mauvaise: { fin: true, issue: 'mauvaise', titre: 'Arrêt hypoxique', texte: 'L’hypoxie s’est prolongée jusqu’à l’arrêt cardiaque. L’équipe réanime Mme B. Rejoue : patient d’abord, DOPE, ballon.' }
       }
     },
     {
       id: 'rea-delirium', titre: 'L’agitation de 3 h du matin', difficulte: 2,
+      varier: { FC: 6, PAS: 8, SpO2: 1, FR: 2, T: 0.2 },
       intro: 'Il est 3 h. M. Pierre L., 79 ans, extubé hier après une chirurgie abdominale, est seul dans son box. Tu l’entends crier.',
       retenir: 'Agitation en réa : sécurité d’abord, puis chercher les causes (douleur, hypoxie, glycémie, globe vésical, sevrage), dépister le délirium (CAM-ICU), privilégier les mesures non médicamenteuses et appeler le médecin. La contention n’est jamais un réflexe.',
-      sbar: ['M. L., 79 ans, box 6 : agitation nocturne, RASS +2, CAM-ICU positive', 'J2 d’une chirurgie abdominale, extubé hier, sous antalgiques', 'Douleur à 7/10 et globe vésical de 600 mL que j’ai signalé ; SpO₂ 95 %, glycémie normale', 'Je demande une réévaluation de l’antalgie et de la prise en charge du délirium'],
+      sbar: ['M. L., 79 ans, box 6 : agitation nocturne, RASS positif, CAM-ICU positive', 'J2 d’une chirurgie abdominale, extubé hier, sous antalgiques', 'Douleur importante et globe vésical que j’ai signalés ; saturation et glycémie correctes', 'Je demande une réévaluation de l’antalgie et de la prise en charge du délirium'],
       noeuds: {
-        debut: { heure: '03 h 00', patient: 'M. L., 79 ans — post-op J2', v: { FC: 112, PAS: 162, PAD: 88, SpO2: 93, FR: 24, T: 37.4, GCS: 2, GCSlabel: 'RASS' }, texte: 'M. L. tire sur sa perfusion et essaie d’enjamber la barrière. Il ne sait pas où il est. RASS +2.', s: 'PADIS',
+        debut: { heure: '03 h 00', patient: 'M. L., 79 ans — post-op J2', v: { FC: 112, PAS: 162, PAD: 88, SpO2: 93, FR: 24, T: 37.4, GCS: 2, GCSlabel: 'RASS' }, texte: 'M. L. tire sur sa perfusion et essaie d’enjamber la barrière. Il ne sait pas où il est.', s: 'PADIS', indice: 'Sécurité d’abord, sans affrontement.',
           choix: [
-            { t: 'Sécuriser (rester près de lui, lit bas, voix calme, se présenter) et appeler de l’aide', q: 2, fb: 'La sécurité d’abord, sans affrontement. Une voix calme et des repères apaisent souvent mieux qu’une contrainte.', suite: 'causes' },
-            { t: 'Attacher immédiatement ses poignets', q: 0, fb: 'La contention n’est jamais un réflexe : elle aggrave souvent l’agitation et le délirium, et elle nécessite une prescription selon la procédure.', suite: 'causes' },
-            { t: 'Lui dire fermement de se calmer et repartir', q: 0, fb: 'Il est confus : il ne peut pas « se calmer » sur ordre, et le risque de chute est majeur.', suite: 'causes' }
+            { t: 'Sécuriser (rester près de lui, lit bas, voix calme, se présenter) et appeler de l’aide', q: 2, v: { FC: 106 }, fb: 'Une voix calme et des repères apaisent souvent mieux qu’une contrainte.', suite: 'causes' },
+            { t: 'Attacher immédiatement ses poignets', q: 0, v: { FC: 124, PAS: 176, PAD: 94, GCS: 3 }, fb: 'La contention n’est jamais un réflexe : elle aggrave souvent l’agitation et le délirium, et nécessite une prescription selon la procédure.', suite: 'comp_agit' },
+            { t: 'Lui dire fermement de se calmer et repartir', q: 0, v: { FC: 120 }, fb: 'Il est confus : il ne peut pas « se calmer » sur ordre, et le risque de chute est majeur.', suite: 'comp_agit' }
           ] },
-        causes: { heure: '03 h 05', texte: 'Il est un peu plus calme avec toi à côté. Que cherches-tu ?', s: 'PADIS',
+        comp_agit: { heure: '03 h 10', v: { FC: 126, PAS: 178, PAD: 96, SpO2: 91, GCS: 3 }, texte: '⚠️ Complication : M. L. a arraché sa voie veineuse et a failli tomber. Il hurle.', s: 'PADIS', indice: 'Reprends depuis le début : sécurité, aide, puis causes.',
           choix: [
-            { t: 'Les causes : douleur (échelle adaptée), SpO₂, glycémie, globe vésical, fièvre, médicaments', q: 2, fb: 'L’agitation a souvent une cause somatique. « Analgésie d’abord » : une douleur mal soulagée est une cause fréquente.', suite: 'globe' },
-            { t: 'Rien, c’est la démence de l’âge', q: 0, fb: 'Biais d’ancrage ! Un délirium est aigu et a des causes à chercher.', suite: 'globe' },
-            { t: 'Demander directement un sédatif', q: 1, fb: 'Un sédatif peut être nécessaire, mais sans chercher la cause, on risque de masquer une douleur ou une rétention.', suite: 'globe' }
+            { t: 'Appeler de l’aide, sécuriser sans contrainte, comprimer le point de ponction, puis chercher les causes', q: 2, v: { FC: 114 }, fb: 'Rattrapage : la situation est reprise en main, mais il faudra reposer une voie.', suite: 'causes' },
+            { t: 'Le laisser se calmer seul', q: 0, v: { FC: 130 }, fb: 'Il chute et se blesse.', suite: 'fin_mauvaise' }
           ] },
-        globe: { heure: '03 h 10', v: { SpO2: 95 }, texte: 'Douleur estimée à 7/10. Glycémie normale. Tu trouves un globe vésical (bladder scan : 600 mL).', s: 'PADIS',
+        causes: { heure: '03 h 15', texte: 'Il est un peu plus calme avec quelqu’un à côté. Que cherches-tu ?', s: 'PADIS', indice: 'L’agitation a souvent une cause somatique simple.',
           choix: [
-            { t: 'Signaler au médecin la douleur et le globe, et préparer un sondage évacuateur selon prescription/protocole', q: 2, fb: 'Douleur et rétention sont deux causes classiques d’agitation chez la personne âgée opérée. Le seuil de sondage dépend du protocole local.', suite: 'cam' },
-            { t: 'Lui donner à boire pour qu’il urine', q: 0, fb: 'Boire n’aide pas une vessie déjà pleine qui ne se vide pas.', suite: 'cam' },
-            { t: 'Noter et attendre le matin', q: 0, fb: 'La douleur et la rétention entretiennent l’agitation toute la nuit.', suite: 'cam' }
+            { t: 'Les causes : douleur (échelle adaptée), SpO₂, glycémie, globe vésical, fièvre, médicaments', q: 2, v: {}, fb: '« Analgésie d’abord » : une douleur mal soulagée est une cause fréquente.', suite: ['globe', 'evt_voisin'] },
+            { t: 'Demander directement un sédatif', q: 1, v: {}, fb: 'Un sédatif peut être nécessaire, mais sans chercher la cause, on risque de masquer une douleur ou une rétention.', suite: 'globe' },
+            { t: 'Rien, c’est la démence de l’âge', q: 0, v: { FC: 120 }, fb: 'Biais d’ancrage : un délirium est aigu et a des causes à chercher.', suite: 'comp_agit2' }
           ] },
-        cam: { heure: '03 h 40', v: { FC: 96, PAS: 144, PAD: 80, FR: 18, GCS: 1 }, texte: 'Après sondage et antalgique, il est plus calme (RASS +1). Il reste inattentif et sa pensée est désorganisée.', s: 'PADIS',
+        comp_agit2: { heure: '03 h 40', v: { FC: 124, PAS: 172, PAD: 92 }, texte: '⚠️ Complication : l’agitation redouble. Il se tient le ventre en gémissant.', s: 'PADIS', indice: 'Il se tient le ventre…',
           choix: [
-            { t: 'Réaliser la CAM-ICU et transmettre le résultat', q: 2, fb: 'Début aigu + inattention + pensée désorganisée/RASS ≠ 0 : CAM-ICU positive = délirium. Le dépister permet de le prendre en charge.', suite: 'nonmed' },
-            { t: 'Considérer qu’il va bien puisqu’il est calme', q: 1, fb: 'Calme ne veut pas dire sans délirium : la forme hypoactive est fréquente.', suite: 'nonmed' },
-            { t: 'Ne rien noter', q: 0, fb: 'Sans trace, l’équipe de jour ne pourra pas suivre l’évolution.', suite: 'nonmed' }
+            { t: 'Évaluer la douleur et le bas-ventre (globe ?), puis appeler le médecin', q: 2, v: { FC: 116 }, fb: 'Rattrapage : tu cherches enfin une cause somatique.', suite: 'globe' },
+            { t: 'Lui mettre une contention abdominale', q: 0, v: { FC: 130 }, fb: 'La cause reste non traitée.', suite: 'fin_mauvaise' }
           ] },
-        nonmed: { heure: '06 h 30', texte: 'Le jour se lève. Quelles mesures mets-tu en place pour la journée ?', s: 'PADIS',
+        evt_voisin: { evenement: true, heure: '03 h 20', texte: 'Imprévu : la patiente du box 7 sonne, elle a soif et veut boire.', s: 'RAIS', indice: 'Qui est le plus instable des deux ?',
           choix: [
-            { t: 'Lunettes et appareil auditif, horloge et calendrier, lumière le jour, mobilisation, famille encouragée à venir', q: 2, fb: 'Ce sont les mesures non médicamenteuses du bundle ABCDEF, qui réduisent le délirium.', suite: 'fin' },
-            { t: 'Volets fermés toute la journée pour qu’il dorme', q: 0, fb: 'L’inversion jour-nuit entretient le délirium.', suite: 'fin' },
-            { t: 'Limiter les visites pour ne pas l’agiter', q: 1, fb: 'La présence de proches rassure et réoriente : on l’encourage, en adaptant si besoin.', suite: 'fin' }
+            { t: 'Lui dire que tu arrives dans quelques minutes, ou demander à une collègue, et rester auprès de M. L.', q: 2, v: {}, fb: 'Prioriser : la demande de confort attend quelques minutes, le patient agité non.', suite: 'globe' },
+            { t: 'Laisser M. L. seul pour aller la servir', q: 1, v: { FC: 118 }, fb: 'Risque de chute pour M. L. pendant ton absence.', suite: 'globe' }
           ] },
-        fin: { fin: true, texte: '07 h : relève. Tu transmets la nuit de M. L. au médecin de jour.' }
+        globe: { heure: '03 h 30', v: { SpO2: 95 }, texte: 'Douleur estimée à 7/10. Glycémie normale. Tu trouves un globe vésical important au bladder scan.', s: 'PADIS+RAU', indice: 'Deux causes trouvées : à qui les signaler ?',
+          choix: [
+            { t: 'Signaler au médecin la douleur et le globe, et préparer un sondage évacuateur selon prescription/protocole', q: 2, v: { FC: 100, PAS: 148, PAD: 82 }, fb: 'Douleur et rétention sont deux causes classiques d’agitation chez la personne âgée opérée.', suite: 'cam' },
+            { t: 'Lui donner à boire pour qu’il urine', q: 0, v: { FC: 118 }, fb: 'Boire n’aide pas une vessie déjà pleine.', suite: 'comp_globe' },
+            { t: 'Noter et attendre le matin', q: 1, v: {}, fb: 'La douleur et la rétention entretiennent l’agitation toute la nuit.', suite: 'cam' }
+          ] },
+        comp_globe: { heure: '04 h 00', v: { FC: 122, PAS: 170, PAD: 92 }, texte: '⚠️ Complication : il boit, puis s’agite encore plus en se tenant le bas-ventre, très douloureux.', s: 'PADIS+RAU', indice: 'La vessie est déjà pleine : que faut-il pour la vider ?',
+          choix: [
+            { t: 'Prévenir le médecin pour le globe et la douleur, sondage évacuateur selon protocole', q: 2, v: { FC: 104, PAS: 150, PAD: 84 }, fb: 'Rattrapage : la vessie est vidée, l’agitation diminue.', suite: 'cam' },
+            { t: 'Attendre le matin', q: 0, v: { FC: 128 }, fb: 'La douleur et l’agitation s’aggravent : il chute en essayant de se lever.', suite: 'fin_mauvaise' }
+          ] },
+        cam: { heure: '04 h 00', v: { FC: 96, PAS: 144, PAD: 80, FR: 18, GCS: 1 }, texte: 'Il est plus calme. Il reste inattentif et sa pensée est désorganisée.', s: 'PADIS', indice: 'Quel outil dépiste le délirium en réa ?',
+          choix: [
+            { t: 'Réaliser la CAM-ICU et transmettre le résultat', q: 2, v: {}, fb: 'Début aigu + inattention + pensée désorganisée/RASS ≠ 0 : CAM-ICU positive = délirium.', suite: 'nonmed' },
+            { t: 'Considérer qu’il va bien puisqu’il est calme', q: 1, v: {}, fb: 'Calme ne veut pas dire sans délirium : la forme hypoactive est fréquente.', suite: 'nonmed' },
+            { t: 'Ne rien noter', q: 0, v: {}, fb: 'Sans trace, l’équipe de jour ne pourra pas suivre l’évolution.', suite: 'nonmed' }
+          ] },
+        nonmed: { heure: '06 h 30', texte: 'Le jour se lève. Quelles mesures mets-tu en place pour la journée ?', s: 'PADIS', indice: 'Redonner des repères au cerveau.',
+          choix: [
+            { t: 'Lunettes et appareil auditif, horloge et calendrier, lumière le jour, mobilisation, famille encouragée à venir', q: 2, v: { FC: 88 }, fb: 'Mesures non médicamenteuses du bundle ABCDEF, qui réduisent le délirium.', suite: 'fin_bonne' },
+            { t: 'Limiter les visites pour ne pas l’agiter', q: 1, v: {}, fb: 'La présence de proches rassure et réoriente.', suite: 'fin_moyenne' },
+            { t: 'Volets fermés toute la journée pour qu’il dorme', q: 0, v: { FC: 104 }, fb: 'L’inversion jour-nuit entretient le délirium.', suite: 'fin_moyenne' }
+          ] },
+        fin_bonne: { fin: true, issue: 'bonne', titre: 'Nuit apaisée', texte: '07 h : M. L. est calme, sa douleur est soulagée, sa vessie vidée, et un plan anti-délirium est en place.' },
+        fin_moyenne: { fin: true, issue: 'moyenne', titre: 'Calme, mais délirium persistant', texte: '07 h : M. L. est plus calme, mais les mesures pour la journée sont incomplètes : le délirium risque de durer.' },
+        fin_mauvaise: { fin: true, issue: 'mauvaise', titre: 'Chute nocturne', texte: 'M. L. est tombé et s’est blessé. Rejoue : sécurité, aide, puis causes (douleur, globe…).' }
       }
     }
   ],

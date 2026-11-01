@@ -23,6 +23,7 @@ window.ETAGES.push({
     PHYSIO: 'Physiologie / soins infirmiers de base (consensus d’enseignement) 🟠',
     CBIP: 'CBIP — Répertoire commenté des médicaments (à consulter pour toute dose) 🟢',
     EPUAP: 'EPUAP/NPIAP — Prévention et traitement des escarres 2019 🟢',
+    NEWS: 'Royal College of Physicians — NEWS2 (2017) 🟢',
     KDIGO: 'KDIGO — Insuffisance rénale aiguë 2012 🟢',
     PROSEVA: 'Guérin et al., PROSEVA, NEJM 2013 (décubitus ventral dans le SDRA) 🟢'
   },
@@ -146,48 +147,72 @@ window.ETAGES.push({
     ]
   },
   garde: {
-    titre: 'Garde de nuit en réa',
+    id: 'g0', titre: 'Garde de nuit en réa', difficulte: 2,
+    varier: { FC: 6, PAS: 8, SpO2: 1, FR: 2, T: 0.2 },
     intro: 'Il est 23 h. Tu prends en charge M. Léon D., 67 ans, admis pour pneumonie. Il est sous oxygène au masque. Ton infirmière référente est au box voisin.',
     retenir: 'Devant un patient qui se dégrade : ABCDE, appel précoce en SBAR, hémocultures puis antibiotiques sans délai, remplissage et vasopresseur selon prescription, surveillance rapprochée de la PAM, de la diurèse et des lactates.',
-    sbar: ['M. D., 67 ans, box 3 : PA 82/45 (PAM 57), FC 124, lactates 4,2 malgré 1 L de cristalloïdes', 'Admis ce soir pour pneumonie, sous antibiotiques depuis 1 h, hémocultures prélevées', 'Je pense à un choc septique : hypotension persistante, marbrures, diurèse 15 mL/h', 'Je demande que vous veniez maintenant évaluer le patient et l’indication de noradrénaline'],
+    sbar: ['M. D., 67 ans, box 3 : hypotension persistante malgré le remplissage, tachycardie, lactates élevés', 'Admis ce soir pour pneumonie, hémocultures prélevées, sous antibiotiques', 'Je pense à un choc septique : marbrures, diurèse faible, confusion débutante', 'Je demande que vous veniez maintenant évaluer le patient et l’indication de noradrénaline'],
     noeuds: {
-      debut: { heure: '23 h 10', patient: 'M. D., 67 ans — pneumonie', v: { FC: 108, PAS: 104, PAD: 58, SpO2: 91, FR: 26, T: 38.9, GCS: 15 }, texte: 'M. D. est fébrile, respire vite et semble fatigué. SpO₂ 91 % sous 6 L/min. Par quoi commences-tu ?', s: 'ERC',
+      debut: { heure: '23 h 10', patient: 'M. D., 67 ans — pneumonie', v: { FC: 108, PAS: 104, PAD: 58, SpO2: 91, FR: 26, T: 38.9, GCS: 15 }, texte: 'M. D. est fébrile, respire vite et semble fatigué malgré l’oxygène. Par quoi commences-tu ?', s: 'ERC', indice: 'Une évaluation structurée te dira si c’est grave… et un score te dira à quel point.',
         choix: [
-          { t: 'Évaluation ABCDE complète et calcul de son score NEWS2', q: 2, fb: 'Une évaluation structurée permet de repérer la gravité : FR 26, SpO₂ 91 % sous O₂, FC 108, T° 38,9 → NEWS2 élevé.', suite: 'news' },
-          { t: 'Lui donner du paracétamol et repasser dans 2 h', q: 0, fb: 'Traiter la fièvre ne traite pas la cause, et attendre 2 h chez un patient à la FR 26 est dangereux.', suite: 'news' },
-          { t: 'Monter l’oxygène au maximum sans rien dire', q: 1, fb: 'L’O₂ peut aider, mais sans évaluation ni appel, la cause de la dégradation passe inaperçue.', suite: 'news' }
+          { t: 'Évaluation ABCDE complète et calcul de son score NEWS2', q: 2, v: { SpO2: 92 }, fb: 'Une évaluation structurée permet de repérer la gravité : FR élevée, SpO₂ basse sous O₂, tachycardie, fièvre → NEWS2 élevé.', suite: 'news' },
+          { t: 'Lui donner du paracétamol et repasser dans 2 h', q: 0, v: { FC: 116, PAS: 96, PAD: 52, FR: 28 }, fb: 'Traiter la fièvre ne traite pas la cause, et attendre 2 h chez un patient qui respire si vite est dangereux.', suite: 'deg1' },
+          { t: 'Monter l’oxygène sans rien dire', q: 1, v: { SpO2: 93 }, fb: 'L’O₂ peut aider, mais sans évaluation ni appel, la cause de la dégradation passe inaperçue.', suite: 'news' }
         ] },
-      news: { heure: '23 h 20', texte: 'Son score NEWS2 est à 9. Que fais-tu ?', s: 'SSC',
+      deg1: { heure: '00 h 10', v: { FC: 124, PAS: 88, PAD: 48, SpO2: 89, FR: 30, GCS: 14 }, texte: '⚠️ Complication : quand tu repasses, M. D. a des marbrures aux genoux, il est confus et sa PA a chuté.', s: 'SSC+NEWS', indice: 'C’est maintenant une urgence : qui dois-tu prévenir, et comment ?',
         choix: [
-          { t: 'Prévenir immédiatement ton infirmière et le médecin (appel SBAR), suspicion de sepsis', q: 2, fb: 'Un NEWS2 ≥ 7 impose une réponse urgente. Le dépistage par NEWS2 est d’ailleurs l’outil privilégié par la SSC 2026.', suite: 'hemoc' },
-          { t: 'Noter le score et attendre la visite du matin', q: 0, fb: 'Un NEWS2 à 9 est une urgence : la plupart des arrêts cardiaques à l’hôpital sont précédés de signes ignorés.', suite: 'hemoc', v: { FC: 118, PAS: 92, PAD: 50 } },
-          { t: 'Refaire les paramètres dans 1 h', q: 1, fb: 'Surveiller plus souvent est utile mais ne suffit pas : il faut une évaluation médicale.', suite: 'hemoc', v: { FC: 114, PAS: 96, PAD: 52 } }
+          { t: 'Rester auprès de lui, déclencher un appel urgent du médecin et refaire un ABCDE', q: 2, v: { SpO2: 91 }, fb: 'Bon rattrapage : la dégradation est reconnue et l’appel est immédiat. Une heure a quand même été perdue.', suite: 'hemoc' },
+          { t: 'Attendre la visite du matin, il dort peut-être', q: 0, v: { FC: 132, PAS: 78, PAD: 40, GCS: 12 }, fb: 'Confusion, marbrures et hypotension : ce n’est pas du sommeil, c’est un choc.', suite: 'fin_mauvaise' }
         ] },
-      hemoc: { heure: '23 h 35', v: { FC: 116, PAS: 94, PAD: 52 }, texte: 'Le médecin prescrit hémocultures, lactates et antibiotiques IV. Dans quel ordre ?', s: 'SSC',
+      news: { heure: '23 h 20', texte: 'Son score NEWS2 est très élevé (≥ 7). Que fais-tu ?', s: 'SSC+NEWS', indice: 'NEWS2 ≥ 7 : quelle réponse le protocole prévoit-il ?',
         choix: [
-          { t: 'Hémocultures d’abord, puis antibiotiques sans attendre (objectif : dans l’heure)', q: 2, fb: 'Les cultures avant l’antibiotique, mais sans retarder l’antibiotique : objectif dans l’heure si sepsis probable.', suite: 'remplis' },
-          { t: 'Antibiotiques d’abord, hémocultures demain', q: 1, fb: 'L’antibiotique rapide est essentiel, mais des hémocultures prélevées après risquent d’être négatives.', suite: 'remplis' },
-          { t: 'Attendre les résultats des hémocultures avant l’antibiotique', q: 0, fb: 'Les cultures prennent 24-48 h : attendre ferait perdre un temps précieux. Délai cible : dans l’heure.', suite: 'remplis', v: { FC: 124, PAS: 86, PAD: 46 } }
+          { t: 'Prévenir immédiatement ton infirmière et le médecin (appel SBAR), suspicion de sepsis', q: 2, v: {}, fb: 'Un NEWS2 ≥ 7 impose une réponse urgente. La SSC 2026 recommande ce type de score pour dépister le sepsis.', suite: ['hemoc', 'evt_famille'] },
+          { t: 'Noter le score et attendre la visite du matin', q: 0, v: { FC: 118, PAS: 92, PAD: 50 }, fb: 'La plupart des arrêts cardiaques à l’hôpital sont précédés de signes ignorés.', suite: 'deg1' },
+          { t: 'Refaire les paramètres dans 1 h', q: 1, v: { FC: 114 }, fb: 'Surveiller plus souvent est utile mais ne suffit pas : il faut une évaluation médicale.', suite: 'hemoc' }
         ] },
-      remplis: { heure: '00 h 15', v: { FC: 124, PAS: 82, PAD: 45, SpO2: 92, FR: 28 }, texte: 'Malgré 1 L de cristalloïdes, la PA reste à 82/45 (PAM 57). Il a des marbrures aux genoux et a uriné 15 mL en 1 h. Lactates : 4,2 mmol/L.', s: 'S3',
+      evt_famille: { evenement: true, heure: '23 h 30', texte: 'Imprévu : le téléphone du box sonne. C’est la fille de M. D., très inquiète, qui veut des nouvelles maintenant.', s: 'PADIS', indice: 'La famille compte, mais le patient instable aussi : comment concilier les deux ?',
         choix: [
-          { t: 'Reconnaître un probable choc septique et rappeler le médecin immédiatement', q: 2, fb: 'Hypotension malgré remplissage + lactate > 2 = critères de choc septique (Sepsis-3). Il faut une réévaluation médicale et sans doute un vasopresseur.', suite: 'nora' },
-          { t: 'Surélever les jambes et attendre que ça passe', q: 0, fb: 'Le lever de jambes peut tester la réponse au remplissage mais ne remplace pas l’appel : la PAM est à 57.', suite: 'nora' },
-          { t: 'Poser une sonde urinaire pour mieux mesurer la diurèse, puis appeler', q: 1, fb: 'La diurèse horaire est utile, mais l’appel est la priorité devant une PAM à 57.', suite: 'nora' }
+          { t: 'L’écouter brièvement, lui dire que l’équipe s’occupe de son père et qu’on la rappellera (médecin), puis retourner auprès du patient', q: 2, v: {}, fb: 'Accueillir sans abandonner le patient : la famille est rassurée et l’information médicale viendra du médecin.', suite: 'hemoc' },
+          { t: 'Rester 20 minutes au téléphone pour tout lui expliquer', q: 1, v: { FC: 116, PAS: 98, PAD: 54 }, fb: 'L’intention est bonne, mais le patient instable reste sans surveillance.', suite: 'hemoc' },
+          { t: 'Raccrocher sans rien dire', q: 1, v: {}, fb: 'Le patient est prioritaire, mais une phrase rassurante prend 30 secondes.', suite: 'hemoc' }
         ] },
-      nora: { heure: '00 h 40', v: { FC: 118, PAS: 88, PAD: 50 }, texte: 'Le médecin prescrit de la noradrénaline pour une PAM ≥ 65 mmHg. Le cathéter central n’est pas encore posé.', s: 'SSC',
+      hemoc: { heure: '23 h 35', v: { FC: 116, PAS: 94, PAD: 52 }, texte: 'Le médecin prescrit hémocultures, lactates et antibiotiques IV. Dans quel ordre ?', s: 'SSC', indice: 'Les cultures sont précieuses… mais l’antibiotique ne doit pas attendre.',
         choix: [
-          { t: 'Débuter sur une voie périphérique de bon calibre, dédiée, avec surveillance rapprochée du point de ponction (selon prescription et protocole)', q: 2, fb: 'La SSC 2026 suggère de débuter en périphérique plutôt que d’attendre la voie centrale. Voie dédiée et surveillance de l’extravasation.', suite: 'surv' },
-          { t: 'Attendre la voie centrale, même si ça prend 1 h', q: 0, fb: 'Retarder le vasopresseur prolonge l’hypoperfusion des organes.', suite: 'surv', v: { FC: 128, PAS: 78, PAD: 42 } },
-          { t: 'Brancher la noradrénaline en Y sur la perfusion d’antibiotique', q: 0, fb: 'Jamais : chaque changement de débit de l’autre perfusion pousse un bolus de noradrénaline.', suite: 'surv' }
+          { t: 'Hémocultures d’abord, puis antibiotiques sans attendre (objectif : dans l’heure)', q: 2, v: { FC: 112 }, fb: 'Cultures avant l’antibiotique, sans retarder l’antibiotique : dans l’heure si sepsis probable.', suite: 'remplis' },
+          { t: 'Antibiotiques d’abord, hémocultures demain', q: 1, v: {}, fb: 'L’antibiotique rapide est essentiel, mais des hémocultures prélevées après risquent d’être négatives.', suite: 'remplis' },
+          { t: 'Attendre les résultats des hémocultures avant l’antibiotique', q: 0, v: { FC: 124, PAS: 86, PAD: 46 }, fb: 'Les cultures prennent 24-48 h : attendre ferait perdre un temps précieux.', suite: 'deg2' }
         ] },
-      surv: { heure: '02 h 00', v: { FC: 104, PAS: 108, PAD: 58, SpO2: 94, FR: 24, T: 38.4 }, texte: 'La PAM est à 75 sous noradrénaline. Quelle surveillance mets-tu en place ?', s: 'SSC+KDIGO',
+      remplis: { heure: '00 h 15', v: { FC: 124, PAS: 82, PAD: 45, SpO2: 92, FR: 28 }, texte: 'Malgré un litre de cristalloïdes, la PA reste basse. Marbrures, diurèse très faible sur la dernière heure, lactates à 4,2 mmol/L.', s: 'S3', indice: 'Hypotension malgré remplissage + lactate > 2 : à quelle définition cela correspond-il ?',
         choix: [
-          { t: 'PA (idéalement artérielle), FC, diurèse horaire, conscience, marbrures, lactates de contrôle, point de ponction', q: 2, fb: 'On surveille la perfusion des organes, pas seulement le chiffre de PA.', suite: 'fin' },
-          { t: 'La température uniquement', q: 0, fb: 'La fièvre n’est pas le paramètre clé du choc : la perfusion des organes l’est.', suite: 'fin' },
-          { t: 'PA toutes les 4 heures', q: 1, fb: 'Sous amines, la surveillance doit être continue ou très rapprochée.', suite: 'fin' }
+          { t: 'Reconnaître un probable choc septique et rappeler le médecin immédiatement', q: 2, v: {}, fb: 'Hypotension malgré remplissage + lactate > 2 mmol/L = critères de choc septique (Sepsis-3).', suite: 'nora' },
+          { t: 'Surélever les jambes et attendre que ça passe', q: 0, v: { FC: 130, PAS: 76, PAD: 40 }, fb: 'La PAM est sous 65 mmHg : attendre aggrave l’hypoperfusion des organes.', suite: 'deg2' },
+          { t: 'Poser une sonde urinaire pour mieux mesurer la diurèse, puis appeler', q: 1, v: {}, fb: 'La diurèse horaire est utile, mais l’appel est la priorité.', suite: 'nora' }
         ] },
-      fin: { fin: true, texte: '06 h 30 : M. D. est stabilisé sous noradrénaline, sa diurèse reprend. Il faut maintenant transmettre la situation au médecin de jour.' }
+      deg2: { heure: '01 h 30', v: { FC: 134, PAS: 74, PAD: 40, SpO2: 89, FR: 32, GCS: 13 }, texte: '⚠️ Complication : M. D. est de plus en plus confus, ses marbrures remontent sur les cuisses. Le médecin de garde arrive au box voisin.', s: 'SSC+S3', indice: 'Le temps perdu ne se rattrape pas… mais il est encore temps d’agir.',
+        choix: [
+          { t: 'L’appeler immédiatement au box en SBAR et préparer ce qu’il prescrit (antibiotiques, remplissage, noradrénaline)', q: 2, v: { PAS: 84, PAD: 46 }, fb: 'Rattrapage : le patient est pris en charge, mais avec du retard. Il faudra une surveillance très rapprochée.', suite: 'surv_tard' },
+          { t: 'Attendre qu’il ait fini avec l’autre patient', q: 0, v: { FC: 140, PAS: 66, PAD: 36, GCS: 11 }, fb: 'Ton patient est en choc : c’est lui l’urgence.', suite: 'fin_mauvaise' }
+        ] },
+      nora: { heure: '00 h 40', v: { FC: 118, PAS: 88, PAD: 50 }, texte: 'Le médecin prescrit de la noradrénaline pour une PAM ≥ 65 mmHg. Le cathéter central n’est pas encore posé.', s: 'SSC', indice: 'Que suggère la SSC 2026 quand la voie centrale n’est pas encore disponible ?',
+        choix: [
+          { t: 'Débuter sur une voie périphérique de bon calibre, dédiée, avec surveillance rapprochée du point de ponction (selon prescription et protocole)', q: 2, v: { FC: 104, PAS: 108, PAD: 60 }, fb: 'La SSC 2026 suggère de débuter en périphérique plutôt que d’attendre la voie centrale.', suite: 'surv' },
+          { t: 'Attendre la voie centrale, même si ça prend 1 h', q: 0, v: { FC: 128, PAS: 78, PAD: 42 }, fb: 'Retarder le vasopresseur prolonge l’hypoperfusion des organes.', suite: 'deg2' },
+          { t: 'Brancher la noradrénaline en Y sur la perfusion d’antibiotique', q: 0, v: { FC: 126, PAS: 140, PAD: 84 }, fb: 'Jamais : chaque changement de débit de l’autre perfusion pousse un bolus de noradrénaline (poussée hypertensive).', suite: 'deg2' }
+        ] },
+      surv: { heure: '02 h 00', v: { SpO2: 94, FR: 24, T: 38.4 }, texte: 'La PAM est revenue au-dessus de la cible sous noradrénaline. Quelle surveillance mets-tu en place ?', s: 'SSC+KDIGO', indice: 'On ne surveille pas qu’un chiffre de PA : on surveille la perfusion des organes.',
+        choix: [
+          { t: 'PA (idéalement artérielle), FC, diurèse horaire, conscience, marbrures, lactates de contrôle, point de ponction', q: 2, v: { FC: 98, FR: 22 }, fb: 'On surveille la perfusion des organes, pas seulement le chiffre de PA.', suite: 'fin_bonne' },
+          { t: 'PA toutes les 4 heures', q: 1, v: {}, fb: 'Sous amines, la surveillance doit être continue ou très rapprochée.', suite: 'fin_moyenne' },
+          { t: 'La température uniquement', q: 0, v: { FC: 112, PAS: 90, PAD: 50 }, fb: 'La fièvre n’est pas le paramètre clé du choc.', suite: 'surv_tard' }
+        ] },
+      surv_tard: { heure: '03 h 00', v: { FC: 110, PAS: 96, PAD: 54 }, texte: 'Le patient est sous noradrénaline, mais il a passé du temps en hypoperfusion. Que surveilles-tu en priorité ?', s: 'SSC+KDIGO', indice: 'Après un choc prolongé, quels organes souffrent en premier ?',
+        choix: [
+          { t: 'Surveillance continue : PAM, diurèse horaire (rein), conscience, lactates de contrôle, et signaler toute dégradation', q: 2, v: { FC: 102, PAS: 104, PAD: 58 }, fb: 'Le rein et le cerveau sont les premiers à souffrir d’un choc prolongé.', suite: 'fin_moyenne' },
+          { t: 'Le laisser dormir jusqu’au matin', q: 0, v: { FC: 122, PAS: 82, PAD: 44 }, fb: 'Le patient reste instable.', suite: 'fin_mauvaise' }
+        ] },
+      fin_bonne: { fin: true, issue: 'bonne', titre: 'Patient stabilisé à temps', texte: '06 h 30 : M. D. est stabilisé, sa diurèse reprend et ses lactates baissent. Grâce à ta réactivité, le choc a été traité tôt.' },
+      fin_moyenne: { fin: true, issue: 'moyenne', titre: 'Stabilisé, mais avec du retard', texte: '06 h 30 : M. D. est stable sous noradrénaline, mais sa fonction rénale s’est altérée pendant la nuit. Chaque heure gagnée compte dans le sepsis.' },
+      fin_mauvaise: { fin: true, issue: 'mauvaise', titre: 'Transfert en catastrophe', texte: 'Le choc s’est aggravé sans traitement : l’équipe de garde doit intervenir en urgence pour une défaillance multiviscérale. Rejoue : quels signaux aurais-tu pu prendre au sérieux plus tôt ?' }
     }
   },
   escape: {

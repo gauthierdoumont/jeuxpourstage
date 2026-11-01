@@ -10,11 +10,13 @@
  *   (situations flash, qui en premier ?, sprint 60 s, memory, mot mystère, gaz du sang express), 7 badges.
  * 1.2.0 (2026-11-01) : « Salle de jeux » dans la barre du bas et sur l’accueil, tuile Mini-jeux remontée,
  *   version affichée sur l’accueil, mise à jour automatique de l’appli installée.
+ * 1.3.0 (2026-11-01) : gardes à embranchements (suite aléatoire, fins multiples mémorisées, variation des
+ *   constantes, joker café « Appeler le référent »), validation stricte des gardes ; 4 gardes de la Réa réécrites.
  * ===================================================================== */
 'use strict';
 
 /* ============================== CONFIG ============================== */
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 const STORAGE_KEY = 'jeuxpourstage_v1';
 const SCHEMA_VERSION = 1;
 const INTERVALLES = [0, 1, 2, 4, 7, 14];          // jours avant révision, par boîte Leitner (1 à 5)
@@ -655,60 +657,106 @@ function animerECG(fc) {
   id = requestAnimationFrame(f);
   nettoyages.push(() => cancelAnimationFrame(id));
 }
+const finsGarde = g => Object.entries(g.noeuds).filter(([, n]) => n.fin).map(([k]) => k);
+const ICONE_ISSUE = { bonne: '🌅', moyenne: '🌤️', mauvaise: '🌧️' };
 VUES.garde = ({ id, g: gi }) => {
   const e = etage(id), st = S.etages[id];
   if (gi == null) {
     vue(`${entete('🌙 Gardes — ' + esc(e.titre), true)}
-    ${monito('Choisis ta garde. Chaque garde est une situation différente : à toi de remarquer, interpréter et réagir ! ☕ ' + S.cafes + ' café(s) en poche.')}
-    ${e.gardes.map((g, k) => { const r = (st.gardes || {})[g.id]; return `<button class="etage" style="--c:${e.couleur}" data-g="${k}"><span class="em">${r != null ? (r >= 80 ? '🌅' : r >= 50 ? '🌤️' : '🌧️') : '🌙'}</span>
-      <span class="info"><b>${esc(g.titre)}</b><small>${'⭐'.repeat(g.difficulte || 2)}${r != null ? ' · record ' + r + '%' : ' · pas encore jouée'}</small></span></button>`; }).join('')}`);
+    ${monito('Choisis ta garde. Chaque décision change la suite : il existe plusieurs fins à découvrir ! ☕ ' + S.cafes + ' café(s) en poche.')}
+    ${e.gardes.map((g, k) => { const r = (st.gardes || {})[g.id], fins = finsGarde(g), vues = ((st.fins || {})[g.id] || []).filter(f => fins.includes(f)).length;
+      return `<button class="etage" style="--c:${e.couleur}" data-g="${k}"><span class="em">${r != null ? (r >= 80 ? '🌅' : r >= 50 ? '🌤️' : '🌧️') : '🌙'}</span>
+      <span class="info"><b>${esc(g.titre)}</b><small>${'⭐'.repeat(g.difficulte || 2)}${r != null ? ' · record ' + r + '%' : ' · pas encore jouée'} · 🏁 ${vues}/${fins.length} fins découvertes</small></span></button>`; }).join('')}`);
     $$('[data-g]').forEach(b => b.onclick = () => aller('garde', { id, g: +b.dataset.g }));
     return;
   }
   const g = e.gardes[gi], rec = (st.gardes || {})[g.id];
   vue(`${entete('🌙 ' + esc(g.titre), true)}
   ${monito(esc(g.intro))}
-  <div class="carte"><b>Comment ça marche ?</b><p>À chaque étape, choisis l’action la plus juste. Les constantes évoluent selon tes choix. Une erreur grave coûte ☕ un café.</p>
-  <p>Tu as <span class="cafes">${'☕'.repeat(S.cafes) || '0 café'}</span>${S.cafes === 0 ? ' — tu joues fatiguée : pas de bonus café en fin de garde. Révise des flashcards pour recharger !' : ''}</p>
-  <p class="doux">Score final = qualité des décisions + transmission SBAR.${rec != null ? ' Ton record : ' + rec + '%.' : ''}</p></div>
+  <div class="carte"><b>Comment ça marche ?</b><p>À chaque étape, choisis l’action la plus juste. Tes choix changent l’état du patient… et la suite de l’histoire. Une erreur grave coûte ☕ un café.</p>
+  <p>Besoin d’aide ? Le bouton <b>☕ Appeler le référent</b> donne un indice contre 1 café.</p>
+  <p>Tu as <span class="cafes">${'☕'.repeat(S.cafes) || '0 café'}</span>${S.cafes === 0 ? ' — pas de joker possible : révise 10 flashcards pour recharger un café. Tu peux quand même jouer !' : ''}</p>
+  <p class="doux">🏁 ${((st.fins || {})[g.id] || []).length}/${finsGarde(g).length} fins découvertes.${rec != null ? ' Ton record : ' + rec + '%.' : ''}</p></div>
   <button class="btn violet" id="go">Prendre la garde</button>`);
   $('#go').onclick = () => jouerGarde(id, gi);
 };
+/* Constantes : bornes d’affichage et variation tirée au début de chaque partie (garde.varier) */
+const BORNES = { FC: [30, 180], PAS: [50, 230], PAD: [25, 130], SpO2: [60, 100], FR: [4, 45], T: [34, 41.5] };
+function tirerDecalage(varier) {
+  const d = {};
+  Object.entries(varier || {}).forEach(([k, amp]) => { const r = (Math.random() * 2 - 1) * amp; d[k] = k === 'T' ? Math.round(r * 10) / 10 : Math.round(r); });
+  if (d.PAS != null && d.PAD == null) d.PAD = Math.round(d.PAS * 0.6);
+  return d;
+}
+function appliquerDecalage(v, d) {
+  const r = Object.assign({}, v);
+  Object.keys(d).forEach(k => {
+    if (r[k] == null || typeof r[k] !== 'number' || !BORNES[k]) return;
+    if (r[k] === 0) return;                        // arrêt (FC 0, FR 0) : jamais modifié
+    const x = clamp(r[k] + d[k], BORNES[k][0], BORNES[k][1]);
+    r[k] = k === 'T' ? Math.round(x * 10) / 10 : Math.round(x);
+  });
+  if (r.PAS != null && r.PAD != null && r.PAD >= r.PAS - 10) r.PAD = r.PAS - 15;
+  return r;
+}
+const suiteDe = c => Array.isArray(c.suite) ? pick(c.suite) : c.suite;
 function jouerGarde(id, gi = 0) {
   const e = etage(id), g = e.gardes[gi];
-  let points = 0, max = 0, erreurs = 0, v = Object.assign({}, g.noeuds.debut.v || {}), journal = [];
+  const decalage = tirerDecalage(g.varier);
+  let points = 0, max = 0, erreurs = 0, joker = false, v = Object.assign({}, g.noeuds.debut.v || {});
   function noeud(nid) {
     const n = g.noeuds[nid];
     if (n.v) v = Object.assign({}, v, n.v);
-    if (n.fin) return sbar(n);
-    const m = vue(`${entete('🌙 ' + esc(g.titre), true)}
-      ${n.patient ? `<div class="chip" style="margin-bottom:6px">🛏️ ${esc(n.patient)}</div>` : ''}
-      ${moniteurHTML(v)}
-      <div class="carte">${n.heure ? `<small class="doux">🕑 ${esc(n.heure)}</small>` : ''}<p>${esc(n.texte)}</p></div>
-      <div id="ch">${shuffle(n.choix.map((c, k) => k)).map(k => `<button class="choix" data-k="${k}">${esc(n.choix[k].t)}</button>`).join('')}</div><div id="fb"></div>`);
-    animerECG(v.FC);
-    $$('[data-k]', m).forEach(b => b.onclick = () => {
-      const c = n.choix[+b.dataset.k];
-      max += 2; points += c.q;
-      $$('[data-k]', m).forEach(x => { x.disabled = true; const cc = n.choix[+x.dataset.k]; if (cc.q === 2) x.classList.add('ok'); });
-      if (c.q < 2) b.classList.add('ko');
-      if (c.q === 0) { erreurs++; if (S.cafes > 0) { S.cafes--; toast('☕ −1 café'); } son('ko'); vibre([80, 50, 80]); }
-      else if (c.q === 2) { son('ok'); vibre(30); gagneXP(15); } else son('clic');
-      sauver();
-      journal.push(c.q);
-      const titre = c.q === 2 ? '<div class="verdict ok">Excellent choix ✅</div>' : c.q === 1 ? '<div class="verdict" style="color:var(--orange)">Acceptable, mais pas le plus prioritaire 🟠</div>' : '<div class="verdict ko">Décision risquée ❌</div>';
-      $('#fb').innerHTML = `${titre}<div class="bloc b-pourquoi"><b class="t">🧠 Le pourquoi</b>${esc(c.fb)}</div>${n.s ? `<div class="source">📚 ${esc(sourceTexte(e, n.s))}</div>` : ''}<button class="btn" id="suiv">Continuer →</button>`;
-      $('#suiv').onclick = () => { if (c.v) v = Object.assign({}, v, c.v); noeud(c.suite); };
-      $('#fb').scrollIntoView({ behavior: animationsOn() ? 'smooth' : 'auto', block: 'start' });
-    });
+    if (n.fin) return sbar(n, nid);
+    let retires = [];
+    function dessin() {
+      const visibles = n.choix.map((c, k) => k).filter(k => !retires.includes(k));
+      const m = vue(`${entete('🌙 ' + esc(g.titre), true)}
+        ${n.patient ? `<div class="chip" style="margin-bottom:6px">🛏️ ${esc(n.patient)}</div>` : ''}
+        ${n.evenement ? `<div class="chip" style="margin-bottom:6px;border-color:var(--orange)">⚡ Imprévu</div>` : ''}
+        ${moniteurHTML(appliquerDecalage(v, decalage))}
+        <div class="carte">${n.heure ? `<small class="doux">🕑 ${esc(n.heure)}</small>` : ''}<p>${esc(n.texte)}</p></div>
+        <div id="aide"></div>
+        <div id="ch">${shuffle(visibles).map(k => `<button class="choix" data-k="${k}">${esc(n.choix[k].t)}</button>`).join('')}</div>
+        <button class="btn sec" id="joker" ${S.cafes > 0 ? '' : 'disabled'}>☕ Appeler le référent ${S.cafes > 0 ? '(−1 café)' : '(plus de café)'}</button><div id="fb"></div>`);
+      animerECG(v.FC);
+      $('#joker').onclick = () => {
+        if (S.cafes <= 0) return;
+        S.cafes--; joker = true; sauver(); son('clic');
+        const q0 = n.choix.map((c, k) => k).filter(k => n.choix[k].q === 0 && !retires.includes(k));
+        if (n.indice) { $('#aide').innerHTML = `<div class="bloc b-stage"><b class="t">☕ Ton/ta référent(e) te glisse</b>${esc(n.indice)}</div>`; $('#joker').remove(); }
+        else if (q0.length) { retires.push(q0[0]); dessin(); toast('☕ Le référent écarte une mauvaise option'); }
+      };
+      $$('[data-k]', m).forEach(b => b.onclick = () => {
+        const c = n.choix[+b.dataset.k];
+        max += 2; points += c.q;
+        $$('[data-k]', m).forEach(x => { x.disabled = true; if (n.choix[+x.dataset.k].q === 2) x.classList.add('ok'); });
+        if ($('#joker')) $('#joker').remove();
+        if (c.q < 2) b.classList.add('ko');
+        if (c.q === 0) { erreurs++; if (S.cafes > 0) { S.cafes--; toast('☕ −1 café'); } son('ko'); vibre([80, 50, 80]); enregistrerErreur && enregistrerErreur({ type: 'garde', etage: id, g: g.id, n: nid }); }
+        else if (c.q === 2) { son('ok'); vibre(30); gagneXP(15); } else son('clic');
+        if (c.v) v = Object.assign({}, v, c.v);
+        sauver();
+        const titre = c.q === 2 ? '<div class="verdict ok">Excellent choix ✅</div>' : c.q === 1 ? '<div class="verdict" style="color:var(--orange)">Acceptable, mais pas le plus prioritaire 🟠</div>' : '<div class="verdict ko">Décision risquée ❌</div>';
+        $('#fb').innerHTML = `${titre}<div class="bloc b-pourquoi"><b class="t">🧠 Le pourquoi</b>${esc(c.fb)}</div>${n.s ? `<div class="source">📚 ${esc(sourceTexte(e, n.s))}</div>` : ''}<button class="btn" id="suiv">Continuer →</button>`;
+        $('#suiv').onclick = () => noeud(suiteDe(c));
+        $('#fb').scrollIntoView({ behavior: animationsOn() ? 'smooth' : 'auto', block: 'start' });
+      });
+    }
+    dessin();
   }
-  function sbar(n) {
+  function sbar(n, nid) {
+    const st = S.etages[id]; st.fins = st.fins || {}; st.fins[g.id] = st.fins[g.id] || [];
+    const nouvelle = !st.fins[g.id].includes(nid);
+    if (nouvelle) { st.fins[g.id].push(nid); S.stats.finsDecouvertes = (S.stats.finsDecouvertes || 0) + 1; sauver(); }
     const lettres = ['S — Situation', 'B — Background (antécédents)', 'A — Assessment (évaluation)', 'R — Recommandation'];
     const items = g.sbar.map((t, k) => ({ t, k }));
     let melange = shuffle(items), choisi = [];
+    const issue = n.issue || 'bonne';
     function dessin() {
       vue(`${entete('📞 Transmission SBAR', true)}
-      ${monito(esc(n.texte) + '<br><b>Dernière étape : appelle le médecin.</b> Remets les 4 morceaux de ta transmission dans l’ordre S-B-A-R.')}
+      <div class="carte centre"><div class="grand-emoji">${ICONE_ISSUE[issue]}</div><h2>${esc(n.titre || 'Fin de garde')}</h2>${nouvelle ? '<p>🏁 <b>Nouvelle fin découverte !</b></p>' : ''}<p>${esc(n.texte)}</p></div>
+      ${monito('<b>Dernière étape : la transmission.</b> Remets les 4 morceaux dans l’ordre S-B-A-R.')}
       <div class="carte"><b>Ta transmission</b>${choisi.map((x, k) => `<div class="etape"><span class="n">${'SBAR'[k]}</span>${esc(x.t)}</div>`).join('') || '<p class="doux">Touche les éléments ci-dessous dans l’ordre.</p>'}</div>
       <div>${melange.filter(x => !choisi.includes(x)).map(x => `<button class="etape" data-k="${x.k}">${esc(x.t)}</button>`).join('')}</div>
       ${choisi.length ? '<button class="btn sec" id="annul">↩️ Annuler le dernier</button>' : ''}`);
@@ -721,21 +769,28 @@ function jouerGarde(id, gi = 0) {
       const decisions = max ? points / max : 1;
       const bonusCafe = S.cafes > 0 ? 5 : 0;
       const score = Math.min(100, Math.round(decisions * 80 + justes / 4 * 15 + bonusCafe));
-      const st = S.etages[id]; st.garde = Math.max(st.garde || 0, score); st.gardes = st.gardes || {}; st.gardes[g.id] = Math.max(st.gardes[g.id] || 0, score);
-      S.stats.gardes++; gagneXP(Math.round(score * 1.5)); if (score >= 80) confettis(); son('niveau'); sauver();
-      ecranResultat('Rapport de garde', `<div class="grand-emoji">${score >= 80 ? '🌅' : score >= 50 ? '🌤️' : '🌧️'}</div><h2>Score : ${score}%</h2>
+      st.garde = Math.max(st.garde || 0, score); st.gardes = st.gardes || {}; st.gardes[g.id] = Math.max(st.gardes[g.id] || 0, score);
+      S.stats.gardes++; gagneXP(Math.round(score * 1.5) + (nouvelle ? 20 : 0));
+      if (typeof apresGarde === 'function') apresGarde({ id, g, score, joker, issue, nouvelle });
+      if (score >= 80) confettis(); son('niveau'); sauver();
+      const fins = finsGarde(g);
+      ecranResultat('Rapport de garde', `<div class="grand-emoji">${ICONE_ISSUE[issue]}</div><h2>Score : ${score}%</h2>
+      <div class="ligne"><span>🏁 Fin</span><span>${esc(n.titre || issue)}</span></div>
       <div class="ligne"><span>🩺 Décisions</span><span>${Math.round(decisions * 100)}%</span></div>
       <div class="ligne"><span>❌ Décisions risquées</span><span>${erreurs}</span></div>
       <div class="ligne"><span>📞 SBAR</span><span>${justes}/4</span></div>
+      <div class="ligne"><span>☕ Joker utilisé</span><span>${joker ? 'oui' : 'non'}</span></div>
       <div class="ligne"><span>☕ Bonus café</span><span>${bonusCafe ? '+5' : '0'}</span></div>
+      <div class="ligne"><span>🗺️ Fins découvertes</span><span>${st.fins[g.id].filter(f => fins.includes(f)).length}/${fins.length}</span></div>
       <div class="bloc b-clair" style="text-align:left"><b class="t">📞 La bonne transmission</b>${lettres.map((l, k) => `<b>${l}</b> : ${esc(g.sbar[k])}`).join('<br>')}</div>
       <div class="bloc b-stage" style="text-align:left"><b class="t">🩺 À retenir de cette garde</b>${esc(g.retenir)}</div>`,
-        [['Rejouer la garde', () => jouerGarde(id, gi), 'violet'], ...(gi + 1 < e.gardes.length ? [['Garde suivante →', () => aller('garde', { id, g: gi + 1 }, true), 'vert']] : []), ['Toutes les gardes', () => aller('garde', { id }, true), 'sec']]);
+        [['Rejouer (autre fin ?)', () => jouerGarde(id, gi), 'violet'], ...(gi + 1 < e.gardes.length ? [['Garde suivante →', () => aller('garde', { id, g: gi + 1 }, true), 'vert']] : []), ['Toutes les gardes', () => aller('garde', { id }, true), 'sec']]);
     }
     dessin();
   }
   noeud('debut');
 }
+let enregistrerErreur = null;   // branché en phase 3 (carnet d’erreurs)
 
 /* ============================== ESCAPE GAME ============================== */
 VUES.escape = ({ id }) => {
@@ -1219,9 +1274,22 @@ function valider() {
       if (ids.has(g.id)) pb.push(`${e.id} garde id en double ${g.id}`); ids.add(g.id);
       const n = g.noeuds;
       if (!n.debut) pb.push(`${e.id}/${g.id} sans nœud debut`);
-      Object.entries(n).forEach(([k, x]) => (x.choix || []).forEach(c => { if (!n[c.suite]) pb.push(`${e.id}/${g.id} ${k} → ${c.suite} introuvable`); if (![0, 1, 2].includes(c.q)) pb.push(`${e.id}/${g.id} ${k} q invalide`); }));
+      Object.entries(n).forEach(([k, x]) => (x.choix || []).forEach(c => { (Array.isArray(c.suite) ? c.suite : [c.suite]).forEach(t => { if (!n[t]) pb.push(`${e.id}/${g.id} ${k} → ${t} introuvable`); }); if (![0, 1, 2].includes(c.q)) pb.push(`${e.id}/${g.id} ${k} q invalide`); }));
       if (!Object.values(n).some(x => x.fin)) pb.push(`${e.id}/${g.id} sans fin`);
       if (!g.sbar || g.sbar.length !== 4) pb.push(`${e.id}/${g.id} SBAR incomplet`);
+      // graphe : atteignabilité, absence de boucle, bifurcations, fins
+      const succ = x => (x.choix || []).flatMap(c => Array.isArray(c.suite) ? c.suite : [c.suite]);
+      const vus = new Set(), pile = new Set(); let boucle = false;
+      const dfs = k => { if (pile.has(k)) { boucle = true; return; } if (vus.has(k) || !n[k]) return; vus.add(k); pile.add(k); succ(n[k]).forEach(dfs); pile.delete(k); };
+      dfs('debut');
+      if (boucle) pb.push(`${e.id}/${g.id} boucle infinie`);
+      Object.keys(n).forEach(k => { if (!vus.has(k)) pb.push(`${e.id}/${g.id} nœud ${k} inatteignable`); });
+      const bif = Object.values(n).filter(x => new Set(succ(x)).size > 1).length;
+      if (bif < 2) pb.push(`${e.id}/${g.id} seulement ${bif} bifurcation(s)`);
+      const fins = Object.values(n).filter(x => x.fin);
+      if (fins.length < 2) pb.push(`${e.id}/${g.id} moins de 2 fins`);
+      if (!fins.some(x => x.issue === 'mauvaise')) pb.push(`${e.id}/${g.id} aucune fin mauvaise`);
+      Object.entries(n).forEach(([k, x]) => { if (x.fin) return; if (!x.choix.some(c => c.q === 2)) pb.push(`${e.id}/${g.id} ${k} sans choix q=2`); if (x.choix.some(c => !c.v)) pb.push(`${e.id}/${g.id} ${k} choix sans v`); if (!x.indice) pb.push(`${e.id}/${g.id} ${k} sans indice`); });
     });
     const m = e.mini || {};
     (m.situations || []).forEach((x, i) => { if (!x.choix || !x.choix.some(c => c.q === 2)) pb.push(`${e.id} situation ${i} sans bon choix`); });
@@ -1242,7 +1310,8 @@ function demarrer() {
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
     navigator.serviceWorker.register('service-worker.js', { updateViaCache: 'none' }).then(r => r.update()).catch(() => { });
     let recharge = false; // une nouvelle version prend la main : on recharge une fois
-    navigator.serviceWorker.addEventListener('controllerchange', () => { if (!recharge) { recharge = true; location.reload(); } });
+    const avait = !!navigator.serviceWorker.controller; // pas de rechargement à la toute 1re visite
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (avait && !recharge) { recharge = true; location.reload(); } });
   }
 }
 window.GardeDeNuit = { valider, news2Score, CALCULS, version: APP_VERSION }; // utile pour les tests
