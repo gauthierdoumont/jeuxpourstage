@@ -1,9 +1,10 @@
 /* Service worker — Garde de nuit. Créé par Gauthier Doumont
  * Incrémenter CACHE à chaque mise à jour des fichiers pour forcer le rafraîchissement. */
-const CACHE = 'garde-de-nuit-v1.0.0';
+const CACHE = 'garde-de-nuit-v1.1.0';
 const FICHIERS = [
   './', './index.html', './app.js', './manifest.json',
   './data/soins-intensifs.js', './data/bloc-operatoire.js', './data/neurochirurgie.js', './data/jugement-clinique.js',
+  './data/scenarios-rea.js', './data/scenarios-bloc.js', './data/scenarios-neuro.js', './data/scenarios-jugement.js',
   './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png'
 ];
 self.addEventListener('install', e => {

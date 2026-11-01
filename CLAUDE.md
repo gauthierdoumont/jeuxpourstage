@@ -38,12 +38,12 @@ Le jeu affiche un **compte à rebours** jusqu'au prochain stage et met en avant 
   data/bloc-operatoire.js
   data/neurochirurgie.js
   data/jugement-clinique.js
-  data/scenarios.js     ← gardes (scénarios à embranchements) et escape games
+  data/scenarios-*.js   ← gardes supplémentaires, situations flash et mini-jeux par étage
   manifest.json         ← installation sur l'écran d'accueil (PWA)
   service-worker.js     ← cache hors ligne (version du cache incrémentée à chaque mise à jour)
   icons/
   ```
-  Les données sont des fichiers `.js` (`window.DATA_REA = {...}`), **pas** des `.json` chargés avec `fetch` (fetch échoue quand on ouvre le fichier en local).
+  Les données sont des fichiers `.js` (`window.ETAGES.push({...})`, `window.SCENARIOS.rea = {...}`), **pas** des `.json` chargés avec `fetch` (fetch échoue quand on ouvre le fichier en local).
 - Constante `APP_VERSION` + journal des changements en commentaire en tête de `app.js`.
 - **Sauvegarde** : `localStorage`, clé `jeuxpourstage_v1`, JSON avec `schemaVersion` + fonction de migration ; lectures/écritures dans `try/catch`.
 - Boutons **Exporter** (fichier `.json` daté) / **Importer** (confirmation avant d'écraser). Rappel d'export si rien depuis 14 jours.
@@ -246,24 +246,39 @@ Valider au chargement que chaque `suite` pointe vers un nœud existant et que ch
 
 ---
 
-## 8. État actuel (v1.0.0, 31/10/2026)
+## 8. État actuel (v1.1.0, 01/11/2026)
 
-Le jeu complet est en place et testé (Chromium 360 px, aucune erreur console, export/import et rechargement OK) :
+Le jeu complet est en place et testé (Chromium 360 px, aucune erreur console, toutes les gardes et tous les mini-jeux joués jusqu'au bout, progression conservée au rechargement).
 
 | Fichier | Rôle |
 |---------|------|
 | `index.html` | Coquille, CSS (thèmes clair/sombre), navigation du bas |
-| `app.js` | Moteur : accueil-hôpital, quiz 5 niveaux + boss, mode Garde (moniteur ECG animé + SBAR final), escape games, flashcards Leitner, 7 mini-jeux (ordre, tri, associe, trouve l'erreur, Glasgow, NEWS2, calcul flash), XP/grades/série/badges/cafés, réglages, export/import |
-| `data/soins-intensifs.js` · `data/bloc-operatoire.js` · `data/neurochirurgie.js` · `data/jugement-clinique.js` | Contenu de chaque étage (cartes, questions, mini-jeux, garde, escape game, sources) — le format est documenté en tête de chaque fichier |
-| `manifest.json` · `service-worker.js` · `icons/` | Installation sur l'écran d'accueil et fonctionnement hors ligne |
+| `app.js` | Moteur : hôpital, quiz 5 niveaux + boss, gardes multiples (moniteur ECG animé + SBAR final), escape games, flashcards Leitner, 13 mini-jeux, XP/grades/série/27 badges/cafés, réglages, export/import |
+| `data/soins-intensifs.js` · `bloc-operatoire.js` · `neurochirurgie.js` · `jugement-clinique.js` | Contenu de base de chaque étage (cartes, questions, 1re garde, escape game, sources) |
+| `data/scenarios-rea.js` · `scenarios-bloc.js` · `scenarios-neuro.js` · `scenarios-jugement.js` | Situations supplémentaires : gardes, situations flash, « qui en premier ? », mots mystères, ordre, tri, associe, erreur, Glasgow |
+| `manifest.json` · `service-worker.js` · `icons/` · `.nojekyll` | Installation, hors ligne, GitHub Pages |
 
-Contenu actuel : ~50 cartes et ~40 questions rédigées par étage ; chaque carte génère en plus une question automatique (QCM avec distracteurs pris dans les autres cartes), soit ~80-95 questions jouables par étage. **Prochaine étape de contenu : atteindre l'objectif de 60 cartes / 120 questions par étage.**
+**Contenu par étage** : 4 gardes · 12-14 situations flash · 2-3 classements « qui en premier ? » · 12 mots mystères · 4-6 « remets dans l'ordre » · 3-4 tris · 2 « trouve l'erreur » · 2-3 jeux d'association (aussi utilisés par le Memory) · ~50 cartes · ~40 questions rédigées (+ 1 question auto par carte). Neuro : 12 cas de Glasgow. Réa et Sommet : gaz du sang express. Sommet : NEWS2 express.
+
+**Mini-jeux (13)** : situations flash, qui en premier ?, sprint 60 s, memory, mot mystère, gaz du sang express, remets dans l'ordre, tri express, associe, trouve l'erreur, Glasgow express, NEWS2 express, calcul flash.
+
+Format des scénarios supplémentaires (`window.SCENARIOS[idEtage]`) :
+```js
+{ sources: {...}, gds: true,
+  gardes: [{ id: 'rea-acr', titre, difficulte: 1-3, intro, retenir, sbar: [S,B,A,R], noeuds: { debut: {...}, …, fin: { fin: true, texte } } }],
+  situations: [{ patient, v: {FC,PAS,PAD,SpO2,FR,T,GCS, GCSlabel:'RASS'?}, texte, s, stage, choix: [{ t, q: 2|1|0, fb }] }],
+  prio: [{ titre, intro, s, patients: [[libellé, explication], …] }],   // dans l'ordre de priorité attendu
+  mots: [[MOT, indice, explication]], ordre, tri, associe, erreur, glasgow }  // mêmes formats que les fichiers de base
+```
+`v.FC = 0` affiche un tracé de fibrillation (arrêt cardiaque). Avec `GCSlabel: 'RASS'`, la case GCS du moniteur affiche le RASS.
 
 Règles pour enrichir :
-- **Toujours ajouter les cartes à la fin** du tableau `cartes` (l'index sert d'identifiant de progression Leitner).
-- Chaque question a un `th` existant, une `s` (clé de `sources` ou texte libre) et, si possible, une explication `x` complète.
-- `GardeDeNuit.valider()` (console du navigateur) liste les incohérences de données.
-- Après toute modification de fichier, incrémenter `APP_VERSION` (app.js) **et** `CACHE` (service-worker.js).
+- **Toujours ajouter les cartes à la fin** du tableau `cartes` (l'index sert d'identifiant de progression Leitner) ; **ne jamais changer l'`id` d'une garde** (il sert à mémoriser le record).
+- Chaque question/situation a une source `s` (clé de `sources` de l'étage ou du fichier de scénarios).
+- `GardeDeNuit.valider()` (console du navigateur) liste les incohérences de données (nœuds manquants, choix sans bonne réponse…).
+- Après toute modification, incrémenter `APP_VERSION` (app.js) **et** `CACHE` (service-worker.js) ; tout nouveau fichier `data/*.js` doit être ajouté dans `index.html` **et** dans la liste du service worker.
+
+Prochaines pistes : atteindre 60 cartes / 120 questions rédigées par étage ; ajouter des gardes au fil des retours de stage.
 
 ## 9. Hypothèses et points à confirmer
 

@@ -6,11 +6,13 @@
  * 1.0.0 (2026-10-31) : première version complète — 4 étages, mode Garde,
  *   quiz à 5 niveaux + boss, escape games, flashcards Leitner, 7 mini-jeux,
  *   XP / grades / série / badges / cafés, export-import, PWA hors ligne.
+ * 1.1.0 (2026-11-01) : plusieurs gardes par étage (data/scenarios-*.js), 6 nouveaux mini-jeux
+ *   (situations flash, qui en premier ?, sprint 60 s, memory, mot mystère, gaz du sang express), 7 badges.
  * ===================================================================== */
 'use strict';
 
 /* ============================== CONFIG ============================== */
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.1.0';
 const STORAGE_KEY = 'jeuxpourstage_v1';
 const SCHEMA_VERSION = 1;
 const INTERVALLES = [0, 1, 2, 4, 7, 14];          // jours avant révision, par boîte Leitner (1 à 5)
@@ -42,6 +44,13 @@ const BADGES = [
   ['serie7', '📅', 'Une semaine pile', 'Série de 7 jours', s => s.serie.max >= 7],
   ['serie30', '🌙', 'Gardienne de nuit', 'Série de 30 jours', s => s.serie.max >= 30],
   ['mini', '🎮', 'Touche-à-tout', '25 mini-jeux terminés', s => s.stats.miniJeux >= 25],
+  ['situ50', '🚑', 'Réflexes de pro', '50 situations flash réussies', s => s.stats.situationsJustes >= 50],
+  ['prio', '🚦', 'Chef(fe) d’orchestre', '5 classements de priorité parfaits', s => s.stats.prioParfaites >= 5],
+  ['sprint', '⚡', 'Éclair', '15 bonnes réponses en un sprint', s => ETAGES.some(e => (s.etages[e.id] || {}).sprint >= 15)],
+  ['memory', '🧩', 'Mémoire photographique', '10 Memory terminés', s => s.stats.memory >= 10],
+  ['mots', '🔤', 'Dico vivant', '30 mots mystères trouvés', s => s.stats.mots >= 30],
+  ['gds', '🩸', 'Gazométriste', '30 gaz du sang justes', s => s.stats.gds >= 30],
+  ['gardes', '🌃', 'Toutes les nuits', 'Jouer toutes les gardes d’un étage', s => ETAGES.some(e => e.gardes.every(g => ((s.etages[e.id] || {}).gardes || {})[g.id] != null))],
   ['maitrise', '🎓', 'Prête pour le stage', 'Un étage maîtrisé à 80 %', s => ETAGES.some(e => maitrise(e.id) >= 80)]
 ];
 
@@ -75,12 +84,12 @@ function sourceTexte(e, s) { if (!s) return ''; return s.split('+').map(k => (e.
 /* ============================== ÉTAT ============================== */
 function etatParDefaut() {
   const et = {};
-  ETAGES.forEach(e => { et[e.id] = { niveaux: [0, 0, 0, 0, 0], boss: 0, garde: null, escape: null }; });
+  ETAGES.forEach(e => { et[e.id] = { niveaux: [0, 0, 0, 0, 0], boss: 0, garde: null, gardes: {}, escape: null, sprint: 0 }; });
   return {
     schemaVersion: SCHEMA_VERSION, cree: dateLocale(), xp: 0, cafes: CAFES_MAX,
     serie: { n: 0, max: 0, dernier: null, jokerSemaine: null },
     cartes: {}, etages: et, badges: {},
-    stats: { reponses: 0, bonnes: 0, meilleurCombo: 0, cartes: 0, glasgowParfaits: 0, escapes: 0, boss: 0, calculs: 0, miniJeux: 0, gardes: 0, sbarParfaits: 0, cartesDepuisCafe: 0 },
+    stats: { reponses: 0, bonnes: 0, meilleurCombo: 0, cartes: 0, glasgowParfaits: 0, escapes: 0, boss: 0, calculs: 0, miniJeux: 0, gardes: 0, sbarParfaits: 0, cartesDepuisCafe: 0, situations: 0, situationsJustes: 0, prioParfaites: 0, memory: 0, mots: 0, gds: 0 },
     reglages: { theme: 'auto', son: true, vibration: true, animations: true },
     dernierExport: null
   };
@@ -200,7 +209,7 @@ function maitrise(id) {
   const cs = cartesEtage(e);
   const fortes = cs.filter(c => (S.cartes[c.id] || {}).boite >= 3).length;
   const niv = st.niveaux.filter(x => x >= 6).length;
-  return Math.round(niv / 5 * 35 + (st.boss ? 15 : 0) + (cs.length ? fortes / cs.length * 30 : 0) + (st.garde != null ? Math.min(st.garde, 100) / 10 : 0) + (st.escape ? 10 : 0));
+  return Math.round(niv / 5 * 35 + (st.boss ? 15 : 0) + (cs.length ? fortes / cs.length * 30 : 0) + (e.gardes.length ? e.gardes.reduce((n, g) => n + Math.min((st.gardes || {})[g.id] || 0, 100), 0) / e.gardes.length / 10 : 0) + (st.escape ? 10 : 0));
 }
 function prochainStage() {
   const auj = dateLocale();
@@ -301,7 +310,7 @@ VUES.etage = ({ id }) => {
   <div style="display:flex;align-items:center;gap:8px;margin-top:8px"><div class="barre" style="flex:1"><i style="width:${maitrise(id)}%"></i></div><b>${maitrise(id)}%</b></div><small>Maîtrise de l’étage</small></div>
   ${monito(esc(e.accroche))}
   <div class="grille2">
-    <button class="tuile" data-m="garde"><span class="ico">🌙</span><b>Garde</b><small>${st.garde != null ? 'Record : ' + st.garde + '%' : 'Prends ton service'}</small></button>
+    <button class="tuile" data-m="garde"><span class="ico">🌙</span><b>Gardes</b><small>${Object.keys(st.gardes || {}).length}/${e.gardes.length} jouées</small></button>
     <button class="tuile" data-m="quiz"><span class="ico">🏆</span><b>Quiz</b><small>${niv}/5 niveaux${st.boss ? ' · boss ✔' : ''}</small></button>
     <button class="tuile" data-m="escape"><span class="ico">🔐</span><b>Escape game</b><small>${st.escape ? 'Record : ' + fmtTemps(st.escape) : 'Trouve le code'}</small></button>
     <button class="tuile" data-m="flash"><span class="ico">🃏</span><b>Flashcards</b><small>${dues.length} à revoir · ${nouvelles.length} nouvelles</small></button>
@@ -602,7 +611,7 @@ function moniteurHTML(v) {
     <div class="cst sp ${al('SpO2', v.SpO2)}"><small>SpO₂ %</small><b>${v.SpO2 ?? '--'}</b></div>
     <div class="cst fr ${al('FR', v.FR)}"><small>FR /min</small><b>${v.FR ?? '--'}</b></div>
     <div class="cst t ${al('T', v.T)}"><small>T °C</small><b>${v.T ?? '--'}</b></div>
-    <div class="cst gcs ${v.GCS != null && v.GCS < 15 ? 'alerte' : ''}"><small>${v.GCSlabel || 'GCS'}</small><b>${v.GCS ?? '--'}</b></div>
+    <div class="cst gcs ${v.GCS != null && (v.GCSlabel === 'RASS' ? (v.GCS > 0 || v.GCS < -1) : v.GCS < 15) ? 'alerte' : ''}"><small>${v.GCSlabel || 'GCS'}</small><b>${v.GCS == null ? '--' : (v.GCSlabel === 'RASS' && v.GCS > 0 ? '+' : '') + v.GCS}</b></div>
   </div></div>`;
 }
 function animerECG(fc) {
@@ -612,7 +621,9 @@ function animerECG(fc) {
   if (!W || !H) return;
   const periode = 60 / Math.max(fc || 70, 20); // secondes par battement
   const vitesse = W / 4;                       // 4 secondes à l’écran
+  const fv = fc === 0; // arrêt cardiaque : tracé de fibrillation
   const forme = t => { // t ∈ [0,1[ phase du battement
+    if (fv) return .28 * Math.sin(t * 6.283 * 3) + .18 * Math.sin(t * 6.283 * 7.3 + 1) + .1 * Math.sin(t * 6.283 * 11.7);
     if (t < .08) return Math.sin(t / .08 * Math.PI) * .12;
     if (t > .16 && t < .18) return -.15; if (t >= .18 && t < .21) return 1; if (t >= .21 && t < .24) return -.3;
     if (t > .38 && t < .52) return Math.sin((t - .38) / .14 * Math.PI) * .25; return 0;
@@ -641,18 +652,27 @@ function animerECG(fc) {
   id = requestAnimationFrame(f);
   nettoyages.push(() => cancelAnimationFrame(id));
 }
-VUES.garde = ({ id }) => {
-  const e = etage(id), g = e.garde;
+VUES.garde = ({ id, g: gi }) => {
+  const e = etage(id), st = S.etages[id];
+  if (gi == null) {
+    vue(`${entete('🌙 Gardes — ' + esc(e.titre), true)}
+    ${monito('Choisis ta garde. Chaque garde est une situation différente : à toi de remarquer, interpréter et réagir ! ☕ ' + S.cafes + ' café(s) en poche.')}
+    ${e.gardes.map((g, k) => { const r = (st.gardes || {})[g.id]; return `<button class="etage" style="--c:${e.couleur}" data-g="${k}"><span class="em">${r != null ? (r >= 80 ? '🌅' : r >= 50 ? '🌤️' : '🌧️') : '🌙'}</span>
+      <span class="info"><b>${esc(g.titre)}</b><small>${'⭐'.repeat(g.difficulte || 2)}${r != null ? ' · record ' + r + '%' : ' · pas encore jouée'}</small></span></button>`; }).join('')}`);
+    $$('[data-g]').forEach(b => b.onclick = () => aller('garde', { id, g: +b.dataset.g }));
+    return;
+  }
+  const g = e.gardes[gi], rec = (st.gardes || {})[g.id];
   vue(`${entete('🌙 ' + esc(g.titre), true)}
   ${monito(esc(g.intro))}
   <div class="carte"><b>Comment ça marche ?</b><p>À chaque étape, choisis l’action la plus juste. Les constantes évoluent selon tes choix. Une erreur grave coûte ☕ un café.</p>
   <p>Tu as <span class="cafes">${'☕'.repeat(S.cafes) || '0 café'}</span>${S.cafes === 0 ? ' — tu joues fatiguée : pas de bonus café en fin de garde. Révise des flashcards pour recharger !' : ''}</p>
-  <p class="doux">Score final = qualité des décisions + transmission SBAR.${S.etages[id].garde != null ? ' Ton record : ' + S.etages[id].garde + '%.' : ''}</p></div>
+  <p class="doux">Score final = qualité des décisions + transmission SBAR.${rec != null ? ' Ton record : ' + rec + '%.' : ''}</p></div>
   <button class="btn violet" id="go">Prendre la garde</button>`);
-  $('#go').onclick = () => jouerGarde(id);
+  $('#go').onclick = () => jouerGarde(id, gi);
 };
-function jouerGarde(id) {
-  const e = etage(id), g = e.garde;
+function jouerGarde(id, gi = 0) {
+  const e = etage(id), g = e.gardes[gi];
   let points = 0, max = 0, erreurs = 0, v = Object.assign({}, g.noeuds.debut.v || {}), journal = [];
   function noeud(nid) {
     const n = g.noeuds[nid];
@@ -698,7 +718,7 @@ function jouerGarde(id) {
       const decisions = max ? points / max : 1;
       const bonusCafe = S.cafes > 0 ? 5 : 0;
       const score = Math.min(100, Math.round(decisions * 80 + justes / 4 * 15 + bonusCafe));
-      const st = S.etages[id]; st.garde = Math.max(st.garde || 0, score);
+      const st = S.etages[id]; st.garde = Math.max(st.garde || 0, score); st.gardes = st.gardes || {}; st.gardes[g.id] = Math.max(st.gardes[g.id] || 0, score);
       S.stats.gardes++; gagneXP(Math.round(score * 1.5)); if (score >= 80) confettis(); son('niveau'); sauver();
       ecranResultat('Rapport de garde', `<div class="grand-emoji">${score >= 80 ? '🌅' : score >= 50 ? '🌤️' : '🌧️'}</div><h2>Score : ${score}%</h2>
       <div class="ligne"><span>🩺 Décisions</span><span>${Math.round(decisions * 100)}%</span></div>
@@ -707,7 +727,7 @@ function jouerGarde(id) {
       <div class="ligne"><span>☕ Bonus café</span><span>${bonusCafe ? '+5' : '0'}</span></div>
       <div class="bloc b-clair" style="text-align:left"><b class="t">📞 La bonne transmission</b>${lettres.map((l, k) => `<b>${l}</b> : ${esc(g.sbar[k])}`).join('<br>')}</div>
       <div class="bloc b-stage" style="text-align:left"><b class="t">🩺 À retenir de cette garde</b>${esc(g.retenir)}</div>`,
-        [['Rejouer la garde', () => jouerGarde(id), 'violet'], ['Retour à l’étage', () => aller('etage', { id }, true), 'sec']]);
+        [['Rejouer la garde', () => jouerGarde(id, gi), 'violet'], ...(gi + 1 < e.gardes.length ? [['Garde suivante →', () => aller('garde', { id, g: gi + 1 }, true), 'vert']] : []), ['Toutes les gardes', () => aller('garde', { id }, true), 'sec']]);
     }
     dessin();
   }
@@ -788,6 +808,12 @@ function jouerEscape(id) {
 VUES.mini = ({ id }) => {
   const e = etage(id), m = e.mini || {};
   const jeux = [];
+  if ((m.situations || []).length) jeux.push(['situations', '🚑', 'Situations flash', m.situations.length + ' situations de stage']);
+  if ((m.prio || []).length) jeux.push(['prio', '🚦', 'Qui en premier ?', 'Classe les patients par priorité']);
+  jeux.push(['sprint', '⚡', 'Sprint 60 s', S.etages[id].sprint ? 'Record : ' + S.etages[id].sprint : 'Un max de réponses en 1 min']);
+  if ((m.associe || []).length) jeux.push(['memory', '🧩', 'Memory', 'Retrouve les paires']);
+  if ((m.mots || []).length) jeux.push(['mots', '🔤', 'Mot mystère', 'Reconstitue le terme']);
+  if (m.gds) jeux.push(['gds', '🩸', 'Gaz du sang express', 'Interprète en 3 secondes']);
   if ((m.ordre || []).length) jeux.push(['ordre', '🔢', 'Remets dans l’ordre', 'Les étapes d’un soin']);
   if ((m.tri || []).length) jeux.push(['tri', '🗂️', 'Tri express', 'Classe chaque élément']);
   if ((m.associe || []).length) jeux.push(['associe', '🔗', 'Associe', 'Relie les paires']);
@@ -798,7 +824,7 @@ VUES.mini = ({ id }) => {
   vue(`${entete('🎮 Mini-jeux — ' + esc(e.titre), true)}<div class="grille2">${jeux.map(j => `<button class="tuile" data-j="${j[0]}"><span class="ico">${j[1]}</span><b>${j[2]}</b><small>${j[3]}</small></button>`).join('')}</div>`);
   $$('[data-j]').forEach(b => b.onclick = () => {
     const j = b.dataset.j;
-    ({ ordre: jeuOrdre, tri: jeuTri, associe: jeuAssocie, erreur: jeuErreur, glasgow: jeuGlasgow, news2: jeuNews2, calcul: () => jeuCalcul(id) })[j](id);
+    ({ ordre: jeuOrdre, tri: jeuTri, associe: jeuAssocie, erreur: jeuErreur, glasgow: jeuGlasgow, news2: jeuNews2, calcul: () => jeuCalcul(id), situations: jeuSituations, prio: jeuPrio, sprint: jeuSprint, memory: jeuMemory, mots: jeuMots, gds: jeuGds })[j](id);
   });
 };
 function finMini(id, titre, ok, total, rejouer, extra = '') {
@@ -966,6 +992,197 @@ function jeuCalcul(id) {
   un();
 }
 
+
+/* ---------- Situations flash : une situation, un moniteur, une décision ---------- */
+function jeuSituations(id) {
+  const e = etage(id), liste = shuffle(e.mini.situations).slice(0, 5);
+  let k = 0, ok = 0;
+  function une() {
+    if (k >= liste.length) return finMini(id, 'Situations flash', ok, liste.length, () => jeuSituations(id), '<p class="doux">Chaque partie tire 5 situations au hasard parmi ' + e.mini.situations.length + '.</p>');
+    const x = liste[k];
+    const m = vue(`${entete('🚑 Situations flash', true)}<div class="progression"><span>Situation ${k + 1}/${liste.length}</span><span>✅ ${ok}</span></div>
+    ${x.patient ? `<div class="chip" style="margin-bottom:6px">🛏️ ${esc(x.patient)}</div>` : ''}${x.v ? moniteurHTML(x.v) : ''}
+    <div class="carte"><p>${esc(x.texte)}</p><b>Que fais-tu en premier ?</b></div>
+    ${shuffle(x.choix.map((c, j) => j)).map(j => `<button class="choix" data-k="${j}">${esc(x.choix[j].t)}</button>`).join('')}<div id="fb"></div>`);
+    if (x.v) animerECG(x.v.FC);
+    $$('[data-k]', m).forEach(b => b.onclick = () => {
+      const c = x.choix[+b.dataset.k], meilleur = x.choix.find(y => y.q === 2);
+      $$('[data-k]', m).forEach(y => { y.disabled = true; if (x.choix[+y.dataset.k].q === 2) y.classList.add('ok'); });
+      if (c.q < 2) b.classList.add('ko');
+      S.stats.situations++;
+      if (c.q === 2) { ok++; S.stats.situationsJustes++; son('ok'); vibre(30); gagneXP(12); } else { son(c.q ? 'clic' : 'ko'); if (!c.q) vibre([60, 40, 60]); sauver(); }
+      $('#fb').innerHTML = `<div class="verdict ${c.q === 2 ? 'ok' : 'ko'}">${c.q === 2 ? 'Excellent réflexe ✅' : c.q === 1 ? 'Pas faux, mais pas la priorité 🟠' : 'Décision risquée ❌'}</div>
+      <div class="bloc b-pourquoi"><b class="t">🧠 Le pourquoi</b>${esc(c.fb)}</div>${c !== meilleur ? `<div class="bloc b-clair"><b class="t">✅ Le meilleur choix</b>${esc(meilleur.t)} — ${esc(meilleur.fb)}</div>` : ''}
+      ${x.stage ? `<div class="bloc b-stage"><b class="t">🩺 En stage</b>${esc(x.stage)}</div>` : ''}<div class="source">📚 ${esc(sourceTexte(e, x.s))}</div><button class="btn" id="suiv">Suivant →</button>`;
+      $('#suiv').onclick = () => { k++; une(); };
+      $('#fb').scrollIntoView({ behavior: animationsOn() ? 'smooth' : 'auto', block: 'start' });
+    });
+  }
+  une();
+}
+
+/* ---------- Qui en premier ? : classer des patients par priorité ---------- */
+function jeuPrio(id) {
+  const e = etage(id), p = pick(e.mini.prio);
+  let pris = []; const melange = shuffle(p.patients.map((x, j) => j));
+  function dessin(fini) {
+    vue(`${entete('🚦 Qui en premier ?', true)}<div class="carte"><b>${esc(p.titre)}</b><p>${esc(p.intro)}</p><small class="doux">Touche les patients du <b>plus urgent</b> au moins urgent.</small></div>
+    <div class="carte">${pris.map((j, n) => `<div class="etape ${fini ? (j === n ? 'ok' : 'ko') : ''}"><span class="n">${n + 1}</span>${esc(p.patients[j][0])}</div>`).join('') || '<small class="doux">Ton ordre de passage apparaîtra ici.</small>'}</div>
+    ${fini ? '' : melange.filter(j => !pris.includes(j)).map(j => `<button class="etape" data-o="${j}">🛏️ ${esc(p.patients[j][0])}</button>`).join('')}
+    ${!fini && pris.length ? '<button class="btn sec" id="annul">↩️ Annuler le dernier</button>' : ''}<div id="fb"></div>`);
+    $$('[data-o]').forEach(b => b.onclick = () => { pris.push(+b.dataset.o); son('clic'); dessin(pris.length === p.patients.length); });
+    if ($('#annul')) $('#annul').onclick = () => { pris.pop(); dessin(); };
+    if (fini) {
+      const ok = pris.filter((j, n) => j === n).length; if (ok === p.patients.length) S.stats.prioParfaites++;
+      $('#fb').innerHTML = `<div class="bloc b-clair"><b class="t">✅ L’ordre attendu</b>${p.patients.map((x, n) => `<b>${n + 1}. ${esc(x[0])}</b><br><small>${esc(x[1])}</small>`).join('<br>')}</div><div class="source">📚 ${esc(sourceTexte(e, p.s))}</div><button class="btn" id="res">Voir le score</button>`;
+      $('#res').onclick = () => finMini(id, 'Qui en premier ?', ok, p.patients.length, () => jeuPrio(id), '<p class="doux">Règle d’or : menace vitale (A-B-C-D) d’abord, puis aigu avant chronique, puis le confort et l’administratif.</p>');
+    }
+  }
+  dessin(false);
+}
+
+/* ---------- Sprint 60 s ---------- */
+function jeuSprint(id) {
+  const e = etage(id);
+  const pool = shuffle(questionsEtage(e).filter(q => q.t === 'vf' || (q.t === 'qcm' && q.b.length === 1)));
+  let k = 0, ok = 0, faux = 0, reste = 60, fini = false, chrono;
+  function q() {
+    if (fini) return;
+    const x = pool[k % pool.length];
+    const ordre = x.t === 'qcm' ? shuffle(x.c.map((_, j) => j)) : [];
+    const m = vue(`${entete('⚡ Sprint 60 s', true)}<div class="progression"><span>⏱️ <b id="rs">${reste}</b> s</span><span>✅ ${ok} · ❌ ${faux}</span></div>
+    <div class="chrono"><i id="chr" style="width:${reste / 60 * 100}%"></i></div>
+    <div class="carte"><div class="question">${esc(x.q)}</div></div>
+    ${x.t === 'vf' ? `<div class="rangee"><button class="choix centre" data-v="1">👍 Vrai</button><button class="choix centre" data-v="0">👎 Faux</button></div>` : ordre.map(j => `<button class="choix" data-k="${j}">${esc(x.c[j])}</button>`).join('')}`);
+    const repondre = (juste, b) => {
+      if (fini) return;
+      if (juste) { ok++; son('ok'); } else { faux++; son('ko'); vibre(40); }
+      b.classList.add(juste ? 'ok' : 'ko'); $$('button.choix', m).forEach(y => y.disabled = true);
+      k++; setTimeout(q, juste ? 250 : 700);
+    };
+    if (x.t === 'vf') $$('[data-v]', m).forEach(b => b.onclick = () => repondre((b.dataset.v === '1') === !!x.b, b));
+    else $$('[data-k]', m).forEach(b => b.onclick = () => repondre(+b.dataset.k === x.b[0], b));
+  }
+  chrono = setInterval(() => {
+    reste--; const r = $('#rs'), c = $('#chr'); if (r) r.textContent = reste; if (c) c.style.width = (reste / 60 * 100) + '%';
+    if (reste <= 0) { clearInterval(chrono); fini = true; fin(); }
+  }, 1000);
+  function fin() {
+    const st = S.etages[id], record = ok > (st.sprint || 0);
+    if (record) st.sprint = ok;
+    S.stats.miniJeux++; S.stats.reponses += ok + faux; S.stats.bonnes += ok; gagneXP(ok * 5);
+    if (record && ok) { confettis(); son('niveau'); }
+    ecranResultat('Sprint 60 s', `<div class="grand-emoji">⚡</div><h2>${ok} bonne(s) réponse(s)</h2><p>${faux} erreur(s)</p><p>${record && ok ? '🏆 Nouveau record !' : 'Record : ' + (st.sprint || 0)}</p>`,
+      [['Encore un sprint !', () => jeuSprint(id), 'violet'], ['Autres mini-jeux', () => aller('mini', { id }, true), 'sec']]);
+  }
+  q();
+  // le chrono est arrêté si on quitte la partie (vue() appelle les nettoyages à chaque écran : on le ré-enregistre)
+  const garde = setInterval(() => { if (!fini && !$('#rs')) { clearInterval(chrono); clearInterval(garde); fini = true; } if (fini) clearInterval(garde); }, 300);
+}
+
+/* ---------- Memory ---------- */
+function jeuMemory(id) {
+  const e = etage(id);
+  const toutes = e.mini.associe.flatMap(a => a.paires);
+  const paires = shuffle([...new Map(toutes.map(p => [p[0], p])).values()]).slice(0, 6);
+  const cartes = shuffle(paires.flatMap((p, j) => [{ t: p[0], j }, { t: p[1], j }]));
+  let ouvertes = [], trouvees = [], coups = 0, bloque = false;
+  function dessin() {
+    vue(`${entete('🧩 Memory', true)}<div class="progression"><span>Paires : ${trouvees.length}/${paires.length}</span><span>Coups : ${coups}</span></div>
+    <div class="grille3">${cartes.map((c, n) => { const vis = ouvertes.includes(n) || trouvees.includes(c.j);
+      return `<button class="tuile" data-n="${n}" style="min-height:96px;padding:6px;font-size:.8rem;${trouvees.includes(c.j) ? 'background:var(--vert-l);border-color:var(--vert)' : vis ? 'background:var(--bleu-l)' : ''}">${vis ? esc(c.t) : '<span class="ico">✚</span>'}</button>`; }).join('')}</div>`);
+    $$('[data-n]').forEach(b => b.onclick = () => {
+      const n = +b.dataset.n; if (bloque || ouvertes.includes(n) || trouvees.includes(cartes[n].j)) return;
+      ouvertes.push(n); son('clic');
+      if (ouvertes.length === 2) {
+        coups++; const [a, c] = ouvertes;
+        if (cartes[a].j === cartes[c].j) { trouvees.push(cartes[a].j); ouvertes = []; son('ok'); if (trouvees.length === paires.length) { S.stats.memory++; return setTimeout(() => finMini(id, 'Memory', Math.max(0, paires.length * 2 - coups + paires.length), paires.length * 2, () => jeuMemory(id), `<p>${coups} coups (parfait = ${paires.length})</p><div class="bloc b-clair" style="text-align:left">${paires.map(p => esc(p[0]) + ' ↔ <b>' + esc(p[1]) + '</b>').join('<br>')}</div>`), 500); } }
+        else { bloque = true; dessin(); return setTimeout(() => { ouvertes = []; bloque = false; dessin(); }, 1100); }
+      }
+      dessin();
+    });
+  }
+  dessin();
+}
+
+/* ---------- Mot mystère ---------- */
+function jeuMots(id) {
+  const e = etage(id), mots = shuffle(e.mini.mots).slice(0, 5);
+  const norm = s => s.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Z]/g, '');
+  let k = 0, ok = 0;
+  function un() {
+    if (k >= mots.length) return finMini(id, 'Mot mystère', ok, mots.length, () => jeuMots(id));
+    const [mot, indice, exp] = mots[k], cible = norm(mot);
+    let lettres = shuffle(cible.split('').map((l, j) => ({ l, j })));
+    if (lettres.map(x => x.l).join('') === cible && cible.length > 2) lettres = lettres.reverse();
+    let pris = [], aide = false;
+    function dessin() {
+      vue(`${entete('🔤 Mot mystère', true)}<div class="progression"><span>Mot ${k + 1}/${mots.length}</span><span>✅ ${ok}</span></div>
+      <div class="carte"><b>Indice :</b> ${esc(indice)}${aide ? `<br><small class="doux">Première lettre : <b>${cible[0]}</b></small>` : ''}</div>
+      <div class="code" style="flex-wrap:wrap">${cible.split('').map((_, n) => `<span class="${pris[n] != null ? 'trouve' : ''}" style="width:34px;height:44px">${pris[n] != null ? lettres[pris[n]].l : ''}</span>`).join('')}</div>
+      <div class="seg" style="justify-content:center">${lettres.map((x, n) => `<button data-l="${n}" ${pris.includes(n) ? 'disabled style="opacity:.3"' : ''}>${x.l}</button>`).join('')}</div>
+      <div class="rangee"><button class="btn sec" id="eff">↩️ Effacer</button><button class="btn sec" id="aide" ${aide ? 'disabled' : ''}>💡 Aide</button></div><button class="btn rouge" id="passe">Je donne ma langue au chat</button><div id="fb"></div>`);
+      $$('[data-l]').forEach(b => b.onclick = () => { pris.push(+b.dataset.l); son('clic'); if (pris.length === cible.length) verif(); else dessin(); });
+      $('#eff').onclick = () => { pris.pop(); dessin(); };
+      $('#aide').onclick = () => { aide = true; dessin(); };
+      $('#passe').onclick = () => resultat(false);
+    }
+    function verif() { const r = pris.map(n => lettres[n].l).join(''); if (r === cible) resultat(true); else { son('ko'); vibre(60); toast('Pas encore… essaie un autre ordre'); pris = []; dessin(); } }
+    function resultat(juste) {
+      if (juste) { ok++; S.stats.mots++; son('ok'); gagneXP(aide ? 6 : 10); }
+      vue(`${entete('🔤 Mot mystère', true)}<div class="carte centre"><div class="verdict ${juste ? 'ok' : 'ko'}">${juste ? '✅ Trouvé !' : 'La réponse était :'}</div><h2>${esc(mot)}</h2></div>
+      ${exp ? `<div class="bloc b-pourquoi"><b class="t">🧠 Le pourquoi</b>${esc(exp)}</div>` : ''}<button class="btn" id="suiv">Suivant →</button>`);
+      $('#suiv').onclick = () => { k++; un(); };
+    }
+    dessin();
+  }
+  un();
+}
+
+/* ---------- Gaz du sang express (valeurs générées, troubles primaires simples) ---------- */
+function jeuGds(id) {
+  const N = 6; let k = 0, ok = 0;
+  const TYPES = [
+    ['Acidose respiratoire', () => ({ ph: rnd(720, 732), co2: rnd(50, 70), hco3: rnd(24, 28) }), 'pH bas + PaCO₂ haute : le CO₂ s’accumule (hypoventilation : sédation, épuisement, BPCO).'],
+    ['Acidose métabolique', () => ({ ph: rnd(715, 732), co2: rnd(25, 34), hco3: rnd(10, 18) }), 'pH bas + HCO₃⁻ bas : acides en excès (lactates, acidocétose, insuffisance rénale). La PaCO₂ basse = compensation respiratoire (le patient respire vite).'],
+    ['Alcalose respiratoire', () => ({ ph: rnd(747, 755), co2: rnd(25, 32), hco3: rnd(21, 24) }), 'pH haut + PaCO₂ basse : hyperventilation (douleur, anxiété, hypoxémie, ventilateur réglé trop fort).'],
+    ['Alcalose métabolique', () => ({ ph: rnd(747, 755), co2: rnd(42, 50), hco3: rnd(30, 38) }), 'pH haut + HCO₃⁻ haut : perte d’acide (vomissements, aspiration gastrique) ou diurétiques.'],
+    ['Normal', () => ({ ph: rnd(736, 744), co2: rnd(36, 44), hco3: rnd(22, 26) }), 'pH 7,35-7,45 ; PaCO₂ 35-45 mmHg ; HCO₃⁻ 22-26 mmol/L : tout est dans les normes.']
+  ];
+  function un() {
+    if (k >= N) return finMini(id, 'Gaz du sang express', ok, N, () => jeuGds(id), '<div class="bloc b-stage" style="text-align:left"><b class="t">🩺 Méthode en 3 temps</b>1. pH : acidose (< 7,35) ou alcalose (> 7,45) ?<br>2. Qui « explique » le pH : la PaCO₂ (respiratoire) ou les HCO₃⁻ (métabolique) ?<br>3. L’autre paramètre bouge-t-il dans le même sens ? → compensation.</div>');
+    const t = pick(TYPES), g = t[1]();
+    const ph = (g.ph / 100).toFixed(2).replace('.', ',');
+    const m = vue(`${entete('🩸 Gaz du sang express', true)}<div class="progression"><span>Gaz ${k + 1}/${N}</span><span>✅ ${ok}</span></div>
+    <div class="moniteur"><div class="constantes"><div class="cst t"><small>pH</small><b>${ph}</b></div><div class="cst fr"><small>PaCO₂ mmHg</small><b>${g.co2}</b></div><div class="cst sp"><small>HCO₃⁻ mmol/L</small><b>${g.hco3}</b></div></div></div>
+    ${TYPES.map((x, j) => `<button class="choix" data-j="${j}">${x[0]}</button>`).join('')}<div id="fb"></div>`);
+    $$('[data-j]', m).forEach(b => b.onclick = () => {
+      const juste = TYPES[+b.dataset.j] === t; if (juste) { ok++; S.stats.gds++; son('ok'); } else son('ko');
+      $$('[data-j]', m).forEach(y => { y.disabled = true; if (TYPES[+y.dataset.j] === t) y.classList.add('ok'); });
+      if (!juste) b.classList.add('ko');
+      $('#fb').innerHTML = `<div class="bloc b-pourquoi"><b class="t">🧠 ${esc(t[0])}</b>${esc(t[2])}</div><div class="source">📚 Physiologie / gaz du sang (consensus d’enseignement) 🟠</div><button class="btn" id="suiv">Suivant →</button>`;
+      $('#suiv').onclick = () => { k++; un(); };
+    });
+  }
+  un();
+}
+
+/* ============================== FUSION DES SCÉNARIOS SUPPLÉMENTAIRES ==============================
+ * data/scenarios-*.js remplit window.SCENARIOS[idEtage] = { sources, gardes, situations, prio, mots, ordre, tri, associe, erreur, glasgow } */
+function fusionnerScenarios() {
+  const X = window.SCENARIOS || {};
+  ETAGES.forEach(e => {
+    e.garde.id = e.garde.id || 'g0';
+    e.gardes = [e.garde];
+    e.mini = e.mini || {};
+    const x = X[e.id]; if (!x) return;
+    Object.assign(e.sources, x.sources || {});
+    (x.gardes || []).forEach(g => e.gardes.push(g));
+    ['ordre', 'tri', 'associe', 'erreur', 'glasgow', 'situations', 'prio', 'mots'].forEach(k => { if (x[k]) e.mini[k] = (e.mini[k] || []).concat(x[k]); });
+    if (x.gds) e.mini.gds = true;
+  });
+}
+
 /* ============================== VALIDATION DES DONNÉES ============================== */
 function valider() {
   const pb = [];
@@ -978,9 +1195,19 @@ function valider() {
       if (t === 'vf' && typeof q.b !== 'boolean') pb.push(`${e.id} q${i} vf sans booléen`);
     });
     e.cartes.forEach((c, i) => { if (!e.themes[c[0]]) pb.push(`${e.id} carte ${i} thème inconnu`); if (!c[4]) pb.push(`${e.id} carte ${i} sans source`); });
-    const n = e.garde.noeuds;
-    Object.entries(n).forEach(([k, x]) => (x.choix || []).forEach(c => { if (!n[c.suite]) pb.push(`${e.id} garde ${k} → ${c.suite} introuvable`); }));
-    if (!e.garde.sbar || e.garde.sbar.length !== 4) pb.push(`${e.id} SBAR incomplet`);
+    const ids = new Set();
+    e.gardes.forEach(g => {
+      if (ids.has(g.id)) pb.push(`${e.id} garde id en double ${g.id}`); ids.add(g.id);
+      const n = g.noeuds;
+      if (!n.debut) pb.push(`${e.id}/${g.id} sans nœud debut`);
+      Object.entries(n).forEach(([k, x]) => (x.choix || []).forEach(c => { if (!n[c.suite]) pb.push(`${e.id}/${g.id} ${k} → ${c.suite} introuvable`); if (![0, 1, 2].includes(c.q)) pb.push(`${e.id}/${g.id} ${k} q invalide`); }));
+      if (!Object.values(n).some(x => x.fin)) pb.push(`${e.id}/${g.id} sans fin`);
+      if (!g.sbar || g.sbar.length !== 4) pb.push(`${e.id}/${g.id} SBAR incomplet`);
+    });
+    const m = e.mini || {};
+    (m.situations || []).forEach((x, i) => { if (!x.choix || !x.choix.some(c => c.q === 2)) pb.push(`${e.id} situation ${i} sans bon choix`); });
+    (m.tri || []).forEach((x, i) => x.items.forEach(it => { if (it[1] >= x.cats.length) pb.push(`${e.id} tri ${i} catégorie invalide`); }));
+    (m.erreur || []).forEach((x, i) => { if (!x.items.some(it => it[1])) pb.push(`${e.id} erreur ${i} sans erreur`); });
     e.escape.enigmes.forEach((en, i) => { if (en.type !== 'code' && en.type !== 'ordre' && (en.b == null || en.b >= en.choix.length)) pb.push(`${e.id} escape ${i} invalide`); });
   });
   if (pb.length) console.warn('Problèmes dans les données :', pb);
@@ -989,7 +1216,7 @@ function valider() {
 
 /* ============================== ÉVÉNEMENTS / DÉMARRAGE ============================== */
 function demarrer() {
-  charger(); appliquerReglages(); valider();
+  fusionnerScenarios(); charger(); appliquerReglages(); valider();
   matchMedia('(prefers-color-scheme: dark)').addEventListener && matchMedia('(prefers-color-scheme: dark)').addEventListener('change', appliquerReglages);
   $$('nav.bas button').forEach(b => b.onclick = () => { son('clic'); aller(b.dataset.nav); });
   aller('accueil', {}, true);
