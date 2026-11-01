@@ -12,6 +12,8 @@
  *   version affichée sur l’accueil, mise à jour automatique de l’appli installée.
  * 1.3.0 (2026-11-01) : gardes à embranchements (suite aléatoire, fins multiples mémorisées, variation des
  *   constantes, joker café « Appeler le référent »), validation stricte des gardes ; 4 gardes de la Réa réécrites.
+ * 1.8.0 (2026-11-01) : Bloc — 4 gardes à embranchements, 60 cartes, 120 questions (32 niveau 3), 20 situations,
+ *   4 « qui en premier ? », 15 mots, 10 énigmes d’escape.
  * 1.7.0 (2026-11-01) : escape tiré au hasard dans un pool d’énigmes (code différent à chaque partie),
  *   Révision générale (examen blanc 20 questions, sprint toutes matières, Garde de la mort) ; Réa : 11 énigmes.
  * 1.6.0 (2026-11-01) : missions du jour (graine = date), coffre, défi de la semaine, 10 récompenses par paliers
@@ -24,7 +26,7 @@
 'use strict';
 
 /* ============================== CONFIG ============================== */
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.8.0';
 const STORAGE_KEY = 'jeuxpourstage_v1';
 const SCHEMA_VERSION = 2;
 const INTERVALLES = [0, 1, 2, 4, 7, 14];          // jours avant révision, par boîte Leitner (1 à 5)
