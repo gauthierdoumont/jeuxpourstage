@@ -246,9 +246,9 @@ Valider au chargement que chaque `suite` pointe vers un nœud existant et que ch
 
 ---
 
-## 8. État actuel (v1.9.0, 01/11/2026)
+## 8. État actuel (v1.10.0, 01/11/2026)
 
-> Mission v2.0.0 en cours (phases 1 à 7). Phases 1-5 terminées et phase 6 en cours (Bloc et Neuro faits ; reste le Sommet) (phase 5 : escape en pool tiré au hasard, Révision générale ; phase 3 : sauvegarde v2, étoiles, carnet, points faibles ; phase 4 : missions du jour, défi hebdo, récompenses, jokers) : moteur des gardes à embranchements, 4 gardes de la Réa réécrites, contenu de la Réa à l'objectif (68 cartes, 122 questions dont 31 de niveau 3, 21 situations, 4 « qui en premier ? », 15 mots). Les gardes des autres étages seront réécrites en phase 6 (d'ici là, `valider()` les signale).
+> Mission v2.0.0 en cours (phases 1 à 7). Phases 1-6 terminées : les 4 étages sont à l'objectif et `valider()` ne signale aucune incohérence (phase 5 : escape en pool tiré au hasard, Révision générale ; phase 3 : sauvegarde v2, étoiles, carnet, points faibles ; phase 4 : missions du jour, défi hebdo, récompenses, jokers) : moteur des gardes à embranchements, 4 gardes de la Réa réécrites, contenu de la Réa à l'objectif (68 cartes, 122 questions dont 31 de niveau 3, 21 situations, 4 « qui en premier ? », 15 mots). Les gardes des autres étages seront réécrites en phase 6 (d'ici là, `valider()` les signale).
 
 Le jeu complet est en place et testé (Chromium 360 px, aucune erreur console, toutes les gardes et tous les mini-jeux joués jusqu'au bout, progression conservée au rechargement).
 

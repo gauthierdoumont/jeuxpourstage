@@ -12,6 +12,8 @@
  *   version affichée sur l’accueil, mise à jour automatique de l’appli installée.
  * 1.3.0 (2026-11-01) : gardes à embranchements (suite aléatoire, fins multiples mémorisées, variation des
  *   constantes, joker café « Appeler le référent »), validation stricte des gardes ; 4 gardes de la Réa réécrites.
+ * 1.10.0 (2026-11-01) : Sommet — 4 gardes à embranchements, 60 cartes, 120 questions (36 niveau 3), 20 situations,
+ *   4 « qui en premier ? », 15 mots, 10 énigmes d’escape. Toutes les gardes passent la validation stricte.
  * 1.9.0 (2026-11-01) : Neuro — 4 gardes à embranchements, 60 cartes, 120 questions (38 niveau 3), 20 situations,
  *   4 « qui en premier ? », 15 mots, 10 énigmes d’escape.
  * 1.8.0 (2026-11-01) : Bloc — 4 gardes à embranchements, 60 cartes, 120 questions (32 niveau 3), 20 situations,
@@ -28,7 +30,7 @@
 'use strict';
 
 /* ============================== CONFIG ============================== */
-const APP_VERSION = '1.9.0';
+const APP_VERSION = '1.10.0';
 const STORAGE_KEY = 'jeuxpourstage_v1';
 const SCHEMA_VERSION = 2;
 const INTERVALLES = [0, 1, 2, 4, 7, 14];          // jours avant révision, par boîte Leitner (1 à 5)
