@@ -246,9 +246,9 @@ Valider au chargement que chaque `suite` pointe vers un nœud existant et que ch
 
 ---
 
-## 8. État actuel (v1.3.0, 01/11/2026)
+## 8. État actuel (v1.4.0, 01/11/2026)
 
-> Mission v2.0.0 en cours (phases 1 à 7). Phase 1 terminée : moteur des gardes à embranchements + 4 gardes de la Réa réécrites. Les gardes des autres étages seront réécrites en phase 6 (d'ici là, `valider()` les signale).
+> Mission v2.0.0 en cours (phases 1 à 7). Phases 1-2 terminées : moteur des gardes à embranchements, 4 gardes de la Réa réécrites, contenu de la Réa à l'objectif (68 cartes, 122 questions dont 31 de niveau 3, 21 situations, 4 « qui en premier ? », 15 mots). Les gardes des autres étages seront réécrites en phase 6 (d'ici là, `valider()` les signale).
 
 Le jeu complet est en place et testé (Chromium 360 px, aucune erreur console, toutes les gardes et tous les mini-jeux joués jusqu'au bout, progression conservée au rechargement).
 
@@ -322,6 +322,13 @@ Prochaines pistes : atteindre 60 cartes / 120 questions rédigées par étage ; 
 - Lasater K. — *Clinical judgment development: using simulation to create a rubric*, J Nurs Educ 2007;46:496-503 ; validation 2025 : https://pmc.ncbi.nlm.nih.gov/articles/PMC11749331 🟡
 - Royal College of Physicians — *NEWS2* (2017, guidance complémentaire) — https://www.rcp.ac.uk/media/mrllczrj/news2-chart-4_clinical-response-to-news-trigger-thresholds_0.pdf 🟢
 - Cadre légal belge : loi coordonnée du 10 mai 2015 ; AR du 18 juin 1990 (liste des prestations techniques et actes confiés).
+
+**Ajouts v2 (vérifiés en novembre 2026)**
+- Code pénal belge, art. 458 (secret professionnel) — Cour constitutionnelle, arrêt 127/2013 : https://fr.const-court.be/public/f/2013/2013-127f.pdf 🟢
+- American Diabetes Association — Standards of Care 2025, section 6 (hypoglycémie : niveau 2 < 54 mg/dL, règle 15 g / 15 min) — https://pubmed.ncbi.nlm.nih.gov/39651981/ 🟢
+- Resuscitation Council UK — 2025 Adult ALS (adrénaline dès que possible si non choquable, après le 3e choc si choquable) — https://www.resus.org.uk/professional-library/2025-resuscitation-guidelines/adult-advanced-life-support-guidelines 🟢
+- Resuscitation Council UK — Emergency treatment of anaphylaxis — https://resus.org.uk/media/337/download 🟢
+- European Malignant Hyperthermia Group — gestion d’une crise / disponibilité du dantrolène — https://www.emhg.org/recommendations-1/2020/8/26/dantrolene-availability 🟢
 
 **Médicaments** : toujours le **CBIP** — https://www.cbip.be
 

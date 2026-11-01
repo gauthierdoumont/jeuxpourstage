@@ -12,11 +12,12 @@
  *   version affichée sur l’accueil, mise à jour automatique de l’appli installée.
  * 1.3.0 (2026-11-01) : gardes à embranchements (suite aléatoire, fins multiples mémorisées, variation des
  *   constantes, joker café « Appeler le référent »), validation stricte des gardes ; 4 gardes de la Réa réécrites.
+ * 1.4.0 (2026-11-01) : Réa enrichie — 68 cartes, 122 questions (31 niveau 3), 21 situations, 4 « qui en premier ? », 15 mots.
  * ===================================================================== */
 'use strict';
 
 /* ============================== CONFIG ============================== */
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.4.0';
 const STORAGE_KEY = 'jeuxpourstage_v1';
 const SCHEMA_VERSION = 1;
 const INTERVALLES = [0, 1, 2, 4, 7, 14];          // jours avant révision, par boîte Leitner (1 à 5)
