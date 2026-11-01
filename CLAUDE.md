@@ -246,9 +246,9 @@ Valider au chargement que chaque `suite` pointe vers un nœud existant et que ch
 
 ---
 
-## 8. État actuel (v1.10.0, 01/11/2026)
+## 8. État actuel (v2.0.0, 01/11/2026)
 
-> Mission v2.0.0 en cours (phases 1 à 7). Phases 1-6 terminées : les 4 étages sont à l'objectif et `valider()` ne signale aucune incohérence (phase 5 : escape en pool tiré au hasard, Révision générale ; phase 3 : sauvegarde v2, étoiles, carnet, points faibles ; phase 4 : missions du jour, défi hebdo, récompenses, jokers) : moteur des gardes à embranchements, 4 gardes de la Réa réécrites, contenu de la Réa à l'objectif (68 cartes, 122 questions dont 31 de niveau 3, 21 situations, 4 « qui en premier ? », 15 mots). Les gardes des autres étages seront réécrites en phase 6 (d'ici là, `valider()` les signale).
+> Mission v2.0.0 terminée (phases 1 à 7). `valider()` ne signale aucune incohérence ; chaque étage : 4 gardes à embranchements (2+ bifurcations, 3 fins dont une mauvaise), ≥ 60 cartes, 120 questions rédigées (≥ 32 de niveau 3), 20+ situations flash, 4 « qui en premier ? », 15 mots, 10+ énigmes d'escape (5 tirées par partie).
 
 Le jeu complet est en place et testé (Chromium 360 px, aucune erreur console, toutes les gardes et tous les mini-jeux joués jusqu'au bout, progression conservée au rechargement).
 
@@ -260,7 +260,18 @@ Le jeu complet est en place et testé (Chromium 360 px, aucune erreur console, t
 | `data/scenarios-rea.js` · `scenarios-bloc.js` · `scenarios-neuro.js` · `scenarios-jugement.js` | Situations supplémentaires : gardes, situations flash, « qui en premier ? », mots mystères, ordre, tri, associe, erreur, Glasgow |
 | `manifest.json` · `service-worker.js` · `icons/` · `.nojekyll` | Installation, hors ligne, GitHub Pages |
 
-**Contenu par étage** : 4 gardes · 12-14 situations flash · 2-3 classements « qui en premier ? » · 12 mots mystères · 4-6 « remets dans l'ordre » · 3-4 tris · 2 « trouve l'erreur » · 2-3 jeux d'association (aussi utilisés par le Memory) · ~50 cartes · ~40 questions rédigées (+ 1 question auto par carte). Neuro : 12 cas de Glasgow. Réa et Sommet : gaz du sang express. Sommet : NEWS2 express.
+**Contenu par étage (v2.0.0)**
+
+| Étage | Cartes | Questions rédigées (niv. 3 / V-F / multi) | Situations | Prio | Mots | Énigmes escape | Gardes (fins) |
+|---|---|---|---|---|---|---|---|
+| Réa | 68 | 122 (31 / 16 / 19) | 21 | 4 | 15 | 11 | 4 (12) |
+| Bloc | 60 | 120 (32 / 15 / 22) | 20 | 4 | 15 | 10 | 4 (12) |
+| Neuro | 60 | 120 (38 / 14 / 18) | 20 | 4 | 15 | 10 | 4 (12) |
+| Sommet | 60 | 120 (36 / 15 / 18) | 20 | 4 | 15 | 10 | 4 (12) |
+
++ 1 question automatique par carte. Aussi : 2 « trouve l'erreur » illustrés par étage, 4-6 « remets dans l'ordre », 3-4 tris, 2-3 jeux d'association (Memory) ; Neuro : 12 cas de Glasgow ; Réa et Sommet : gaz du sang express ; Sommet : NEWS2 express et 3 classements de la Garde de la mort.
+
+**Trouve l'erreur illustré** : `SCENES_SVG` (app.js) associe le titre d'une scène à un décor (`box`, `bloc`, `sspi`, `neuro`, `dossier`) et aux coordonnées (viewBox 360 × 240) d'une zone numérotée par élément, dans l'ordre de `items` ; rayon 25 → ≥ 44 px à 360 px de large. Une scène absente de `SCENES_SVG` reste en mode texte. La liste en texte reste toujours affichée (accessibilité).
 
 **Accès aux mini-jeux** : bouton « 🎮 Jeux » de la barre du bas (Salle de jeux, choix de l'étage), bouton orange sur l'accueil, et tuile « Mini-jeux » en haut de chaque étage. Lancer un jeu crée une entrée d'historique (le bouton retour du téléphone ramène à la liste).
 

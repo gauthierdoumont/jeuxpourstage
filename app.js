@@ -12,6 +12,9 @@
  *   version affichée sur l’accueil, mise à jour automatique de l’appli installée.
  * 1.3.0 (2026-11-01) : gardes à embranchements (suite aléatoire, fins multiples mémorisées, variation des
  *   constantes, joker café « Appeler le référent »), validation stricte des gardes ; 4 gardes de la Réa réécrites.
+ * 2.0.0 (2026-11-01) : « Trouve l’erreur » illustré en SVG (5 décors, zones touchables numérotées ≥ 44 px) ;
+ *   version finale de la mission v2 (gardes à embranchements, contenu à l’objectif, étoiles, carnet,
+ *   missions, récompenses, révision générale).
  * 1.10.0 (2026-11-01) : Sommet — 4 gardes à embranchements, 60 cartes, 120 questions (36 niveau 3), 20 situations,
  *   4 « qui en premier ? », 15 mots, 10 énigmes d’escape. Toutes les gardes passent la validation stricte.
  * 1.9.0 (2026-11-01) : Neuro — 4 gardes à embranchements, 60 cartes, 120 questions (38 niveau 3), 20 situations,
@@ -30,7 +33,7 @@
 'use strict';
 
 /* ============================== CONFIG ============================== */
-const APP_VERSION = '1.10.0';
+const APP_VERSION = '2.0.0';
 const STORAGE_KEY = 'jeuxpourstage_v1';
 const SCHEMA_VERSION = 2;
 const INTERVALLES = [0, 1, 2, 4, 7, 14];          // jours avant révision, par boîte Leitner (1 à 5)
@@ -1055,17 +1058,67 @@ function jeuAssocie(id) {
     } else { erreurs++; son('ko'); vibre(60); b.classList.add('secoue'); setTimeout(() => b.classList.remove('secoue'), 400); $('#err').textContent = 'Erreurs : ' + erreurs; }
   });
 }
+/* ---------- Trouve l’erreur : scènes illustrées en SVG (zones touchables ≥ 44 px) ---------- */
+const S_ = 'style="fill:var(--surface2);stroke:var(--doux);stroke-width:2"', S2 = 'style="fill:var(--surface);stroke:var(--doux);stroke-width:2"';
+const DECORS = {
+  box: `<rect x="0" y="0" width="360" height="240" style="fill:var(--bleu-l)"/><line x1="0" y1="212" x2="360" y2="212" style="stroke:var(--doux);stroke-width:2"/>
+    <line x1="30" y1="40" x2="30" y2="212" style="stroke:var(--doux);stroke-width:3"/><rect x="14" y="68" width="32" height="26" rx="4" ${S2}/>
+    <rect x="20" y="148" width="20" height="62" rx="9" style="fill:#3BB273;stroke:#2E7D52;stroke-width:2"/>
+    <rect x="248" y="18" width="94" height="58" rx="6" style="fill:#071016;stroke:#22343F;stroke-width:3"/><polyline points="254,50 274,50 280,34 288,64 294,44 300,50 336,50" fill="none" stroke="#4BE07A" stroke-width="2"/>
+    <rect x="150" y="18" width="42" height="54" rx="4" ${S2}/><line x1="158" y1="32" x2="184" y2="32" style="stroke:var(--doux)"/><line x1="158" y1="44" x2="184" y2="44" style="stroke:var(--doux)"/><line x1="158" y1="56" x2="184" y2="56" style="stroke:var(--doux)"/>
+    <rect x="278" y="118" width="64" height="62" rx="6" ${S2}/><circle cx="310" cy="140" r="9" style="fill:var(--bleu-l);stroke:var(--doux)"/>
+    <polygon points="60,150 60,124 110,112 110,150" ${S_}/><rect x="60" y="150" width="210" height="34" rx="6" ${S_}/><line x1="80" y1="184" x2="80" y2="212" style="stroke:var(--doux);stroke-width:3"/><line x1="250" y1="184" x2="250" y2="212" style="stroke:var(--doux);stroke-width:3"/>
+    <circle cx="88" cy="112" r="15" style="fill:#F2D3B3;stroke:var(--doux)"/><rect x="104" y="128" width="150" height="24" rx="10" style="fill:#9EC9DD"/><rect x="172" y="132" width="16" height="10" rx="2" style="fill:#E15554"/>`,
+  bloc: `<rect x="0" y="0" width="360" height="240" style="fill:var(--vert-l)"/><circle cx="180" cy="28" r="22" style="fill:#FFF3C4;stroke:var(--doux);stroke-width:2"/><line x1="180" y1="0" x2="180" y2="6" style="stroke:var(--doux);stroke-width:3"/>
+    <rect x="70" y="150" width="220" height="20" rx="4" ${S_}/><line x1="180" y1="170" x2="180" y2="225" style="stroke:var(--doux);stroke-width:5"/>
+    <circle cx="92" cy="138" r="13" style="fill:#F2D3B3;stroke:var(--doux)"/><rect x="104" y="130" width="170" height="22" rx="10" style="fill:#9EC9DD"/><line x1="104" y1="138" x2="48" y2="96" style="stroke:#F2D3B3;stroke-width:9;stroke-linecap:round"/>
+    <rect x="236" y="128" width="40" height="26" rx="6" style="fill:#F7C59F;opacity:.9"/><rect x="216" y="152" width="22" height="10" style="fill:#7B5EA7"/>
+    <rect x="276" y="92" width="74" height="10" rx="3" ${S2}/><line x1="290" y1="102" x2="290" y2="150" style="stroke:var(--doux);stroke-width:3"/><line x1="336" y1="102" x2="336" y2="150" style="stroke:var(--doux);stroke-width:3"/>
+    <circle cx="322" cy="40" r="12" style="fill:#F2D3B3;stroke:var(--doux)"/><rect x="306" y="52" width="32" height="40" rx="8" style="fill:#3BB273"/>
+    <rect x="16" y="190" width="48" height="34" rx="4" style="fill:#CFE3EE;stroke:var(--doux);stroke-width:2"/><path d="M20 196 q8 6 16 0 q8 6 16 0" fill="none" stroke="#2E86AB" stroke-width="2"/>`,
+  sspi: `<rect x="0" y="0" width="360" height="240" style="fill:var(--violet-l)"/>${[20, 135, 250].map(x => `<rect x="${x}" y="150" width="92" height="28" rx="6" ${S_}/><circle cx="${x + 16}" cy="140" r="11" style="fill:#F2D3B3;stroke:var(--doux)"/><rect x="${x + 28}" y="134" width="60" height="18" rx="8" style="fill:#9EC9DD"/><line x1="${x + 10}" y1="178" x2="${x + 10}" y2="212" style="stroke:var(--doux);stroke-width:3"/><line x1="${x + 82}" y1="178" x2="${x + 82}" y2="212" style="stroke:var(--doux);stroke-width:3"/><rect x="${x + 20}" y="20" width="56" height="40" rx="5" style="fill:#071016"/><polyline points="${x + 24},40 ${x + 40},40 ${x + 44},30 ${x + 50},50 ${x + 54},40 ${x + 72},40" fill="none" stroke="#4BE07A" stroke-width="2"/>`).join('')}
+    <rect x="60" y="84" width="10" height="40" rx="5" style="fill:var(--surface);stroke:#E15554;stroke-width:2"/><circle cx="65" cy="124" r="8" style="fill:#E15554"/>`,
+  neuro: `<rect x="0" y="0" width="360" height="240" style="fill:var(--violet-l)"/><line x1="0" y1="212" x2="360" y2="212" style="stroke:var(--doux);stroke-width:2"/>
+    <line x1="40" y1="30" x2="40" y2="212" style="stroke:var(--doux);stroke-width:3"/>${[0, 1, 2, 3, 4, 5, 6].map(i => `<line x1="32" y1="${44 + i * 16}" x2="48" y2="${44 + i * 16}" style="stroke:var(--doux)"/>`).join('')}
+    <rect x="30" y="128" width="20" height="30" rx="4" style="fill:#E6F4FF;stroke:var(--doux)"/><path d="M50 130 Q80 110 98 82" fill="none" stroke="#7FA1B0" stroke-width="3"/><rect x="64" y="108" width="14" height="8" style="fill:#E15554"/>
+    <polygon points="90,160 90,118 150,96 150,160" ${S_}/><rect x="90" y="160" width="220" height="30" rx="6" ${S_}/><line x1="110" y1="190" x2="110" y2="212" style="stroke:var(--doux);stroke-width:3"/><line x1="290" y1="190" x2="290" y2="212" style="stroke:var(--doux);stroke-width:3"/>
+    <circle cx="112" cy="82" r="16" style="fill:#F2D3B3;stroke:var(--doux)"/><path d="M98 74 q14 -14 28 0" fill="none" stroke="#FFFFFF" stroke-width="6"/><rect x="128" y="112" width="160" height="26" rx="10" style="fill:#9EC9DD"/>
+    <rect x="150" y="150" width="22" height="14" rx="3" style="fill:#E6F4FF;stroke:var(--doux)"/>`,
+  dossier: `<rect x="0" y="0" width="360" height="240" style="fill:var(--orange-l)"/><rect x="14" y="10" width="332" height="224" rx="10" ${S2}/><rect x="140" y="2" width="80" height="18" rx="6" style="fill:var(--doux)"/>
+    <line x1="180" y1="30" x2="180" y2="225" style="stroke:var(--bord);stroke-width:2;stroke-dasharray:4 4"/>
+    ${[0, 1, 2, 3, 4, 5].map(i => { const x = i < 3 ? 84 : 228, y = 52 + (i % 3) * 64; return `<line x1="${x}" y1="${y}" x2="${x + 70 - (i % 2) * 14}" y2="${y}" style="stroke:var(--doux);stroke-width:3;stroke-linecap:round"/><line x1="${x}" y1="${y + 14}" x2="${x + 52}" y2="${y + 14}" style="stroke:var(--bord);stroke-width:3;stroke-linecap:round"/><line x1="${x}" y1="${y + 26}" x2="${x + 62}" y2="${y + 26}" style="stroke:var(--bord);stroke-width:3;stroke-linecap:round"/>`; }).join('')}`
+};
+const dossierZones = n => Array.from({ length: n }, (_, i) => [i < 3 ? 52 : 196, 62 + (i % 3) * 64]);   // 2 colonnes, sans chevauchement
+const SCENES_SVG = {
+  'Le box 4 au petit matin': ['box', [[72, 98], [128, 98], [30, 60], [182, 172], [171, 45], [295, 47]]],
+  'Réanimation au box 2': ['box', [[150, 120], [220, 96], [80, 175], [205, 180], [171, 45], [30, 200]]],
+  'Salle 3, 8 h du matin': ['bloc', [[44, 92], [228, 190], [160, 120], [262, 112], [322, 70], [40, 205]]],
+  'SSPI, 12 h': ['sspi', [[64, 104], [163, 40], [180, 112], [300, 96], [296, 190]]],
+  'Chambre 14, patient porteur d’une DVE': ['neuro', [[40, 60], [32, 182], [161, 182], [130, 128], [71, 112], [114, 50]]],
+  'Unité LAT, 9 h': ['dossier'], 'La transmission de 14 h': ['dossier'], 'La nuit de l’étudiante': ['dossier']
+};
 function jeuErreur(id) {
-  const e = etage(id), p = pick(e.mini.erreur);
-  const items = shuffle(p.items.map((x, j) => j));
-  vue(`${entete('🔍 Trouve l’erreur', true)}<div class="carte"><b>${esc(p.titre)}</b><p>${esc(p.scene)}</p><small class="doux">Sélectionne <b>toutes</b> les erreurs, puis valide.</small></div>
-  ${items.map(j => `<button class="choix" data-j="${j}">${esc(p.items[j][0])}</button>`).join('')}<button class="btn" id="val">Valider</button><div id="fb"></div>`);
-  $$('[data-j]').forEach(b => b.onclick = () => b.classList.toggle('sel'));
+  const e = etage(id), p = pick(e.mini.erreur), ill = SCENES_SVG[p.titre];
+  const zones = ill ? (ill[1] || dossierZones(p.items.length)) : null;
+  const ordre = ill ? p.items.map((x, j) => j) : shuffle(p.items.map((x, j) => j));
+  const sel = new Set();
+  vue(`${entete('🔍 Trouve l’erreur', true)}<div class="carte"><b>${esc(p.titre)}</b><p>${esc(p.scene)}</p><small class="doux">Sélectionne <b>toutes</b> les erreurs${ill ? ' (sur l’image ou dans la liste)' : ''}, puis valide.</small></div>
+  ${ill ? `<svg class="scene" viewBox="0 0 360 240" role="group" aria-label="Scène illustrée : ${esc(p.titre)}">${DECORS[ill[0]]}${zones.map(([x, y], j) => `<g class="zone" data-z="${j}" tabindex="0" role="button" aria-label="Élément ${j + 1} : ${esc(p.items[j][0])}"><circle cx="${x}" cy="${y}" r="25"/><text x="${x}" y="${y}">${j + 1}</text></g>`).join('')}</svg>` : ''}
+  ${ordre.map(j => `<button class="choix" data-j="${j}">${ill ? `<b>${j + 1}.</b> ` : ''}${esc(p.items[j][0])}</button>`).join('')}<button class="btn" id="val">Valider</button><div id="fb"></div>`);
+  const basculer = j => { if (sel.has(j)) sel.delete(j); else sel.add(j); son('clic');
+    $$(`[data-j="${j}"]`).forEach(b => b.classList.toggle('sel', sel.has(j))); $$(`[data-z="${j}"]`).forEach(z => z.classList.toggle('sel', sel.has(j))); };
+  $$('[data-j]').forEach(b => b.onclick = () => basculer(+b.dataset.j));
+  $$('[data-z]').forEach(z => { z.onclick = () => basculer(+z.dataset.z); z.onkeydown = ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); basculer(+z.dataset.z); } }; });
   $('#val').onclick = () => {
     let ok = 0;
-    $$('[data-j]').forEach(b => { const it = p.items[+b.dataset.j], s = b.classList.contains('sel'); b.disabled = true; b.classList.remove('sel'); if (s === it[1]) ok++; if (it[1]) b.classList.add(s ? 'ok' : 'ko'); else if (s) b.classList.add('ko'); });
+    p.items.forEach((it, j) => {
+      const s = sel.has(j), bon = s === it[1]; if (bon) ok++;
+      const etat = it[1] ? (s ? 'ok' : 'ko') : (s ? 'ko' : '');
+      $$(`[data-j="${j}"]`).forEach(b => { b.disabled = true; b.classList.remove('sel'); if (etat) b.classList.add(etat); });
+      $$(`[data-z="${j}"]`).forEach(z => { z.classList.remove('sel'); if (etat) z.classList.add(etat); const t = z.querySelector('text'); if (etat) t.textContent = etat === 'ok' ? '✓' : '✗'; z.onclick = null; });
+    });
     $('#val').remove(); son(ok === p.items.length ? 'ok' : 'ko');
-    $('#fb').innerHTML = `<div class="bloc b-pourquoi"><b class="t">🧠 Les erreurs</b>${p.items.filter(x => x[1]).map(x => '• ' + esc(x[0]) + ' → ' + esc(x[2])).join('<br>')}</div><div class="source">📚 ${esc(sourceTexte(e, p.s))}</div><button class="btn" id="res">Voir le score</button>`;
+    $('#fb').innerHTML = `<div class="bloc b-pourquoi"><b class="t">🧠 Les erreurs</b>${p.items.map((x, j) => x[1] ? `• ${ill ? (j + 1) + '. ' : ''}${esc(x[0])} → ${esc(x[2])}` : '').filter(Boolean).join('<br>')}</div><div class="source">📚 ${esc(sourceTexte(e, p.s))}</div><button class="btn" id="res">Voir le score</button>`;
     $('#res').onclick = () => finMini(id, 'Trouve l’erreur', ok, p.items.length, () => jeuErreur(id));
   };
 }
